@@ -111,6 +111,13 @@ Ustawienie Domain Managera jako domyślnego serwera po starcie Windows:
 .\scripts\windows\enable-domain-manager-autostart.ps1
 ```
 
+Apache jest ustawiany jako zwykła usługa automatyczna, bez opóźnionego startu.
+W istniejącej instalacji można zastosować tę zmianę dwuklikiem pliku
+`enable-domain-manager-fast-start.cmd`.
+Jeśli środowisko trzeba uruchomić ręcznie, można dwukrotnie kliknąć
+`start-domain-manager.cmd`; launcher poprosi o UAC, uruchomi obie usługi,
+sprawdzi stronę i otworzy ją w domyślnej przeglądarce.
+
 Ręczne uruchomienie środowiska:
 
 ```powershell

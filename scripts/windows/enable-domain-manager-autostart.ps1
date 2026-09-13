@@ -52,11 +52,11 @@ try {
             Stop-Service -Name W3SVC -Force
             (Get-Service W3SVC).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20))
         }
-        Set-StartMode -Name W3SVC -Mode disabled
+    Set-StartMode -Name W3SVC -Mode disabled
     }
 
     Set-StartMode -Name DomainManagerHelper -Mode auto
-    Set-StartMode -Name $ApacheServiceName -Mode delayed-auto
+    Set-StartMode -Name $ApacheServiceName -Mode auto
 
     if ((Get-Service DomainManagerHelper).Status -ne 'Running') {
         Start-Service DomainManagerHelper
