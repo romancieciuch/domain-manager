@@ -1,0 +1,12 @@
+/data/*.sqlite
+/data/*.sqlite-*
+/data/logs/*
+/data/operations/*
+/data/certificates/*
+/data/sessions/*
+!/data/logs/.gitkeep
+!/data/operations/.gitkeep
+!/data/certificates/.gitkeep
+!/data/sessions/.gitkeep
+/helper/**/bin/
+/helper/**/obj/

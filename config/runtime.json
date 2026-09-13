@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "platform": "windows",
+  "apache": {
+    "version": "2.4.68",
+    "root": "C:/apache/2.4.68",
+    "service_name": "DomainManagerApache"
+  },
+  "php": {
+    "default_version": "8.5.10",
+    "versions": {
+      "8.5.10": {
+        "root": "C:/php/8.5.10",
+        "cli": "C:/php/8.5.10/php.exe",
+        "cgi": "C:/php/8.5.10/php-cgi.exe"
+      }
+    }
+  },
+  "projects": {
+    "allowed_roots": [
+      "D:/Projekty"
+    ]
+  },
+  "tools": {
+    "mkcert": "C:/Program Files/Domain Manager/Tools/mkcert.exe"
+  }
+}
