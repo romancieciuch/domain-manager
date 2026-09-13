@@ -12,15 +12,16 @@ param(
     [string] $ApacheRoot = 'C:\apache\2.4.68',
 
     [Parameter()]
+    [Alias('PhpRoot')]
     [ValidateScript({ Test-Path -LiteralPath $_ -PathType Container })]
-    [string] $PhpRoot = 'C:\php\8.5.10'
+    [string[]] $PhpRoots = @('C:\php\8.5.10')
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $apacheRootPath = [IO.Path]::GetFullPath($ApacheRoot).TrimEnd('\')
-$phpRootPath = [IO.Path]::GetFullPath($PhpRoot).TrimEnd('\')
+$phpRootPaths = @($PhpRoots | ForEach-Object { [IO.Path]::GetFullPath($_).TrimEnd('\') } | Sort-Object -Unique)
 $apacheLogsPath = Join-Path $apacheRootPath 'logs'
 $httpdPath = Join-Path $apacheRootPath 'bin\httpd.exe'
 $serviceAccountName = "NT SERVICE\$ServiceName"
@@ -28,13 +29,13 @@ $backupDirectory = Join-Path $env:ProgramData 'DomainManager\backups'
 $backupPath = Join-Path $backupDirectory ("runtime-acls-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
 $serviceWasRunning = (Get-Service -Name $ServiceName -ErrorAction Stop).Status -eq 'Running'
 
-foreach ($requiredPath in @($apacheRootPath, $phpRootPath, $apacheLogsPath, $httpdPath)) {
+foreach ($requiredPath in @($apacheRootPath) + $phpRootPaths + @($apacheLogsPath, $httpdPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Nie znaleziono wymaganej ścieżki: $requiredPath"
     }
 }
 
-$targets = @($apacheRootPath, $phpRootPath, $apacheLogsPath)
+$targets = @($apacheRootPath) + $phpRootPaths + @($apacheLogsPath)
 $backup = foreach ($target in $targets) {
     $acl = Get-Acl -LiteralPath $target
     [pscustomobject]@{
@@ -95,7 +96,7 @@ function Restore-OriginalAcls {
     }
 }
 
-if (-not $PSCmdlet.ShouldProcess("$apacheRootPath oraz $phpRootPath", 'Utwardzenie uprawnień ACL runtime')) {
+if (-not $PSCmdlet.ShouldProcess("$apacheRootPath oraz $($phpRootPaths -join ', ')", 'Utwardzenie uprawnień ACL runtime')) {
     return
 }
 
@@ -109,7 +110,9 @@ try {
     }
 
     Set-RuntimeRootAcl -Path $apacheRootPath
-    Set-RuntimeRootAcl -Path $phpRootPath
+    foreach ($phpRootPath in $phpRootPaths) {
+        Set-RuntimeRootAcl -Path $phpRootPath
+    }
     Grant-LogWriteAccess
 
     & $httpdPath -t
@@ -117,12 +120,14 @@ try {
         throw "Test konfiguracji Apache zakończył się kodem $LASTEXITCODE."
     }
 
-    Start-Service -Name $ServiceName
-    (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+    if ($serviceWasRunning) {
+        Start-Service -Name $ServiceName
+        (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
 
-    $response = Invoke-WebRequest -Uri 'http://localhost/' -UseBasicParsing -TimeoutSec 10
-    if ($response.StatusCode -ne 200) {
-        throw "Apache odpowiedział kodem HTTP $($response.StatusCode)."
+        $response = Invoke-WebRequest -Uri 'http://localhost/' -UseBasicParsing -TimeoutSec 10
+        if ($response.StatusCode -ne 200) {
+            throw "Apache odpowiedział kodem HTTP $($response.StatusCode)."
+        }
     }
 
     Write-Host 'Uprawnienia runtime zostały utwardzone.' -ForegroundColor Green
@@ -139,4 +144,3 @@ catch {
 
     throw
 }
-

@@ -2,7 +2,10 @@
 #Requires -RunAsAdministrator
 
 [CmdletBinding(SupportsShouldProcess = $true)]
-param()
+param(
+    [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
+    [string] $RuntimeConfiguration = (Join-Path $PSScriptRoot '..\..\config\runtime.json')
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -15,6 +18,11 @@ $stagingPath = Join-Path $env:ProgramData "DomainManager\staging\helper-update-$
 $backupPath = Join-Path $env:ProgramData "DomainManager\backups\helper-$runId"
 $service = Get-Service -Name $serviceName -ErrorAction Stop
 $serviceWasRunning = $service.Status -eq 'Running'
+$runtimeConfigPath = Join-Path $env:ProgramData 'DomainManager\config\runtime.json'
+$runtimeConfigDirectory = Split-Path -Parent $runtimeConfigPath
+$runtimeConfigDirectoryExisted = Test-Path -LiteralPath $runtimeConfigDirectory -PathType Container
+$previousRuntimeConfig = if (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf) { [IO.File]::ReadAllBytes($runtimeConfigPath) } else { $null }
+$previousRuntimeConfigAcl = if ($runtimeConfigDirectoryExisted) { (Get-Acl -LiteralPath $runtimeConfigDirectory).Sddl } else { $null }
 
 if (-not (Test-Path -LiteralPath (Join-Path $installPath 'domain-manager-helper.exe') -PathType Leaf)) {
     throw "Nie znaleziono istniejącej instalacji helpera w $installPath."
@@ -29,10 +37,25 @@ function Copy-DirectoryContents {
     Get-ChildItem -LiteralPath $Source -Force | Copy-Item -Destination $Destination -Recurse -Force
 }
 
+function Restore-RuntimeConfiguration {
+    if ($null -eq $previousRuntimeConfig) {
+        Remove-Item -LiteralPath $runtimeConfigPath -Force -ErrorAction SilentlyContinue
+    } else {
+        [IO.File]::WriteAllBytes($runtimeConfigPath, $previousRuntimeConfig)
+    }
+    if (-not $runtimeConfigDirectoryExisted) {
+        Remove-Item -LiteralPath $runtimeConfigDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    } elseif ($null -ne $previousRuntimeConfigAcl) {
+        $acl = Get-Acl -LiteralPath $runtimeConfigDirectory
+        $acl.SetSecurityDescriptorSddlForm($previousRuntimeConfigAcl)
+        Set-Acl -LiteralPath $runtimeConfigDirectory -AclObject $acl
+    }
+}
+
 try {
-    & (Join-Path $PSScriptRoot 'install-runtime-configuration.ps1') -Confirm:$false
+    & (Join-Path $PSScriptRoot 'install-runtime-configuration.ps1') -SourcePath $RuntimeConfiguration -Confirm:$false
     New-Item -ItemType Directory -Path $stagingPath -Force | Out-Null
-    & dotnet publish $projectPath -c Release --no-restore -o $stagingPath
+    & dotnet publish $projectPath -c Release -o $stagingPath
     if ($LASTEXITCODE -ne 0) { throw 'Publikacja helpera nie powiodła się.' }
     if (-not (Test-Path -LiteralPath (Join-Path $stagingPath 'domain-manager-helper.exe') -PathType Leaf)) {
         throw 'Publikacja nie utworzyła pliku wykonywalnego helpera.'
@@ -66,6 +89,11 @@ try {
         $pipe.Dispose()
     }
 
+    if (-not $serviceWasRunning) {
+        Stop-Service -Name $serviceName -Force
+        (Get-Service -Name $serviceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(20))
+    }
+
     Write-Host "Helper został zaktualizowany. Backup: $backupPath" -ForegroundColor Green
 }
 catch {
@@ -75,6 +103,7 @@ catch {
         Get-ChildItem -LiteralPath $installPath -Force | Remove-Item -Recurse -Force
         Copy-DirectoryContents -Source $backupPath -Destination $installPath
     }
+    Restore-RuntimeConfiguration
     if ($serviceWasRunning) {
         Start-Service -Name $serviceName -ErrorAction SilentlyContinue
     }

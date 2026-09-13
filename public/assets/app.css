@@ -151,7 +151,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .operation-meta time { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
 .diagnostic-actions { display: flex; flex-wrap: wrap; gap: 9px; }
 .diagnostic-actions form { margin: 0; }
-.diagnostic-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.diagnostic-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .diagnostic-card { min-width: 0; padding: 16px; display: flex; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 14px; background: white; }
 .diagnostic-card strong, .diagnostic-card small { display: block; }
 .diagnostic-card small { margin-top: 3px; color: var(--muted); overflow-wrap: anywhere; }
@@ -159,6 +159,14 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .log-heading { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #26344a; }
 .log-heading h2 { margin: 4px 0 0; color: white; font-size: 20px; }
 .log-heading .button { min-height: 34px; color: #dbe8ff; border-color: #3a4a63; background: #1a2639; }
+.log-heading-actions, .log-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.log-heading-actions { justify-content: flex-end; }
+.log-session-label { color: #91a4c0; font-size: 11px; font-weight: 700; }
+.log-count { padding: 5px 8px; border: 1px solid #34445d; border-radius: 7px; color: #b8c5d8; font-size: 11px; font-weight: 800; }
+.log-count.error { border-color: #713943; color: #ffabb6; background: #321d27; }
+.log-count.warning { border-color: #745d31; color: #f6d58a; background: #302719; }
+.log-count.notice { color: #b8c9e6; background: #19253a; }
+.log-history-note { margin: 0; padding: 9px 18px; border-bottom: 1px solid #26344a; color: #8fa1ba; background: #131d2d; font-size: 11px; }
 .log-panel pre { max-height: 480px; margin: 0; padding: 18px; overflow: auto; color: #d8e6fb; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .log-empty { margin: 0; padding: 28px 18px; color: #9fb0c9; }
 
@@ -174,6 +182,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
     .project-search { width: 100%; }
     .form-panel { padding: 20px; }
     .environment-header { align-items: start; flex-direction: column; }
+    .log-heading, .log-heading-actions { align-items: flex-start; flex-direction: column; }
     .preview-header { align-items: start; flex-direction: column; }
     .environment-layout, .status-list-grid { grid-template-columns: 1fr; }
     .environment-group-wide { grid-column: auto; }

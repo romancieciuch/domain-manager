@@ -31,6 +31,7 @@ $backupPath = "$httpdConfigPath.domain-manager-$timestamp.backup"
 $originalConfig = $null
 $serviceWasRunning = $false
 $serviceAccountChanged = $false
+$serviceSidTypeChanged = $false
 
 function Invoke-Checked {
     param(
@@ -47,20 +48,32 @@ function Invoke-Checked {
 function Grant-ServiceAccess {
     param(
         [Parameter(Mandatory)] [string] $Path,
-        [Parameter(Mandatory)] [ValidateSet('RX', 'M')] [string] $Permission
+        [Parameter(Mandatory)] [Security.AccessControl.FileSystemRights] $Rights
     )
 
     if (-not (Test-Path -LiteralPath $Path)) {
         throw "Nie znaleziono ścieżki wymaganej przez usługę: $Path"
     }
 
-    Invoke-Checked -FilePath "$env:SystemRoot\System32\icacls.exe" -Arguments @(
-        $Path,
-        '/grant',
-        "${serviceAccount}:(OI)(CI)$Permission",
-        '/T',
-        '/C'
+    $acl = Get-Acl -LiteralPath $Path
+    $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+        $serviceAccount,
+        $Rights,
+        [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit',
+        [Security.AccessControl.PropagationFlags]::None,
+        [Security.AccessControl.AccessControlType]::Allow
     )
+    $acl.SetAccessRule($rule)
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Restore-Acls {
+    param([Parameter(Mandatory)] [object[]] $Backup)
+    foreach ($entry in $Backup) {
+        $acl = Get-Acl -LiteralPath $entry.Path
+        $acl.SetSecurityDescriptorSddlForm($entry.Sddl)
+        Set-Acl -LiteralPath $entry.Path -AclObject $acl
+    }
 }
 
 if (-not (Test-Path -LiteralPath $httpdPath -PathType Leaf)) {
@@ -79,8 +92,25 @@ if ($LASTEXITCODE -ne 0) {
     throw "Nie można odczytać konfiguracji usługi $ServiceName."
 }
 
-if (($serviceConfiguration -join "`n") -notmatch 'SERVICE_START_NAME\s*:\s*LocalSystem') {
-    throw "Instalator oczekuje usługi działającej jako LocalSystem. Przerwano bez zmian."
+$serviceConfigurationText = $serviceConfiguration -join "`n"
+$usesLocalSystem = $serviceConfigurationText -match 'SERVICE_START_NAME\s*:\s*LocalSystem'
+$usesServiceAccount = $serviceConfigurationText -match "SERVICE_START_NAME\s*:\s*$([regex]::Escape($serviceAccount))"
+if (-not $usesLocalSystem -and -not $usesServiceAccount) {
+    throw "Usługa $ServiceName działa na nieobsługiwanym koncie. Oczekiwano LocalSystem albo $serviceAccount."
+}
+
+$sidTypeOutput = & "$env:SystemRoot\System32\sc.exe" qsidtype $ServiceName
+if ($LASTEXITCODE -ne 0 -or ($sidTypeOutput -join "`n") -notmatch 'SERVICE_SID_TYPE\s*:\s*(NONE|RESTRICTED|UNRESTRICTED)') {
+    throw "Nie można odczytać typu SID usługi $ServiceName."
+}
+$previousSidType = $Matches[1].ToLowerInvariant()
+$phpRootPaths = @($PhpRoots | ForEach-Object { [IO.Path]::GetFullPath($_).TrimEnd('\') } | Sort-Object -Unique)
+$aclTargets = @($apacheRootPath, $apacheLogsPath) + $phpRootPaths
+$aclBackup = foreach ($target in $aclTargets) {
+    if (-not (Test-Path -LiteralPath $target -PathType Container)) {
+        throw "Nie znaleziono katalogu wymaganego przez usługę: $target"
+    }
+    [pscustomobject]@{ Path = $target; Sddl = (Get-Acl -LiteralPath $target).Sddl }
 }
 
 if (-not $PSCmdlet.ShouldProcess($ServiceName, 'Ograniczenie konta i uprawnień usługi Apache')) {
@@ -106,21 +136,28 @@ try {
     New-Item -ItemType Directory -Path $managedConfigPath -Force | Out-Null
     New-Item -ItemType Directory -Path $apacheLogsPath -Force | Out-Null
 
-    Invoke-Checked -FilePath "$env:SystemRoot\System32\sc.exe" -Arguments @('sidtype', $ServiceName, 'unrestricted')
-    Invoke-Checked -FilePath "$env:SystemRoot\System32\sc.exe" -Arguments @('config', $ServiceName, 'obj=', $serviceAccount)
-    $serviceAccountChanged = $true
+    if ($previousSidType -ne 'unrestricted') {
+        Invoke-Checked -FilePath "$env:SystemRoot\System32\sc.exe" -Arguments @('sidtype', $ServiceName, 'unrestricted')
+        $serviceSidTypeChanged = $true
+    }
+    if ($usesLocalSystem) {
+        Invoke-Checked -FilePath "$env:SystemRoot\System32\sc.exe" -Arguments @('config', $ServiceName, 'obj=', $serviceAccount)
+        $serviceAccountChanged = $true
+    }
 
-    Grant-ServiceAccess -Path $apacheRootPath -Permission RX
-    Grant-ServiceAccess -Path $apacheLogsPath -Permission M
-    foreach ($phpRoot in $PhpRoots) {
-        Grant-ServiceAccess -Path ([IO.Path]::GetFullPath($phpRoot)) -Permission RX
+    Grant-ServiceAccess -Path $apacheRootPath -Rights ReadAndExecute
+    Grant-ServiceAccess -Path $apacheLogsPath -Rights Modify
+    foreach ($phpRoot in $phpRootPaths) {
+        Grant-ServiceAccess -Path $phpRoot -Rights ReadAndExecute
     }
 
     Invoke-Checked -FilePath $httpdPath -Arguments @('-t')
-    Start-Service -Name $ServiceName
-    (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+    if ($serviceWasRunning) {
+        Start-Service -Name $ServiceName
+        (Get-Service -Name $ServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+    }
 
-    Write-Host "Usługa $ServiceName działa jako $serviceAccount." -ForegroundColor Green
+    Write-Host "Usługa $ServiceName korzysta z konta $serviceAccount." -ForegroundColor Green
     Write-Host "Backup httpd.conf: $backupPath"
 }
 catch {
@@ -135,6 +172,10 @@ catch {
     if ($serviceAccountChanged) {
         & "$env:SystemRoot\System32\sc.exe" config $ServiceName 'obj=' LocalSystem | Out-Null
     }
+    if ($serviceSidTypeChanged) {
+        & "$env:SystemRoot\System32\sc.exe" sidtype $ServiceName $previousSidType | Out-Null
+    }
+    Restore-Acls -Backup $aclBackup
 
     if ($serviceWasRunning) {
         Start-Service -Name $ServiceName -ErrorAction SilentlyContinue

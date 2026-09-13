@@ -9,6 +9,8 @@ use DomainManager\Infrastructure\Database\MigrationRunner;
 use DomainManager\Infrastructure\Database\SqliteConnection;
 use DomainManager\Infrastructure\Database\SqliteOperationHistoryRepository;
 use DomainManager\Infrastructure\Database\SqliteProjectRepository;
+use DomainManager\Infrastructure\Configuration\RuntimeConfiguration;
+use DomainManager\Infrastructure\Platform\Windows\WindowsApacheManager;
 
 require dirname(__DIR__) . '/bootstrap.php';
 
@@ -97,6 +99,74 @@ test('Formularz odrzuca duplikaty domen po normalizacji', static function () use
     ]);
     assertTrue($result['project'] === null);
     assertTrue(in_array('Ta sama domena nie może występować w projekcie kilka razy.', $result['errors'], true));
+});
+
+test('Konfiguracja Windows akceptuje pełne ścieżki i wybraną wersję PHP', static function () use ($temporaryRoot): void {
+    $path = $temporaryRoot . DIRECTORY_SEPARATOR . 'runtime-valid.json';
+    file_put_contents($path, json_encode([
+        'schema_version' => 1,
+        'platform' => 'windows',
+        'apache' => ['version' => '2.4.65', 'root' => 'C:\\Apache24', 'service_name' => 'Apache2.4'],
+        'php' => [
+            'default_version' => '8.5.10',
+            'versions' => ['8.5.10' => [
+                'root' => 'C:\\php-8.5.10',
+                'cli' => 'C:\\php-8.5.10\\php.exe',
+                'cgi' => 'C:\\php-8.5.10\\php-cgi.exe',
+            ]],
+        ],
+        'projects' => ['allowed_roots' => ['D:\\Projects']],
+        'tools' => ['mkcert' => 'C:\\tools\\mkcert.exe'],
+    ], JSON_THROW_ON_ERROR));
+
+    $configuration = RuntimeConfiguration::load($path);
+    assertSameValue('8.5.10', $configuration['php']['default_version']);
+    assertSameValue('Apache2.4', $configuration['apache']['service_name']);
+});
+
+test('Konfiguracja Windows odrzuca ścieżkę względną, złą usługę i brak domyślnego PHP', static function () use ($temporaryRoot): void {
+    $base = [
+        'schema_version' => 1,
+        'platform' => 'windows',
+        'apache' => ['version' => '2.4.65', 'root' => 'C:\\Apache24', 'service_name' => 'Apache2.4'],
+        'php' => [
+            'default_version' => '8.5.10',
+            'versions' => ['8.5.10' => [
+                'root' => 'C:\\php', 'cli' => 'C:\\php\\php.exe', 'cgi' => 'C:\\php\\php-cgi.exe',
+            ]],
+        ],
+        'projects' => ['allowed_roots' => ['D:\\Projects']],
+    ];
+    $invalid = [
+        array_replace_recursive($base, ['apache' => ['root' => '.\\Apache24']]),
+        array_replace_recursive($base, ['apache' => ['service_name' => 'Apache & cmd']]),
+        array_replace_recursive($base, ['php' => ['default_version' => '8.4.0']]),
+    ];
+
+    foreach ($invalid as $index => $configuration) {
+        $path = $temporaryRoot . DIRECTORY_SEPARATOR . "runtime-invalid-$index.json";
+        file_put_contents($path, json_encode($configuration, JSON_THROW_ON_ERROR));
+        assertThrows(RuntimeException::class, static fn () => RuntimeConfiguration::load($path));
+    }
+});
+
+test('Renderer Apache dla Windows tworzy HTTP, HTTPS i alias bez backslashy', static function () use ($temporaryRoot, $documentRoot): void {
+    $phpCgi = $temporaryRoot . DIRECTORY_SEPARATOR . 'php-cgi.exe';
+    touch($phpCgi);
+    $project = new Project(42, 'Windows', $documentRoot, '8.5.10', true, [
+        new DomainName('windows.localhost'), new DomainName('alias.windows.localhost'),
+    ], 0);
+
+    $configuration = (new WindowsApacheManager(['8.5.10' => $phpCgi], 'C:\\ProgramData\\DomainManager\\certificates'))
+        ->renderVirtualHost($project);
+
+    assertTrue(str_contains($configuration, '<VirtualHost *:80>'));
+    assertTrue(str_contains($configuration, '<VirtualHost *:443>'));
+    assertTrue(str_contains($configuration, 'ServerName windows.localhost'));
+    assertTrue(str_contains($configuration, 'ServerAlias alias.windows.localhost'));
+    assertTrue(str_contains($configuration, 'certificates/42/certificate.pem'));
+    assertTrue(!str_contains($configuration, $documentRoot), 'DocumentRoot nie został zapisany w formacie Apache.');
+    assertTrue(!str_contains($configuration, $phpCgi), 'Ścieżka php-cgi nie została zapisana w formacie Apache.');
 });
 
 $database = SqliteConnection::open(':memory:');

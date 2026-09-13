@@ -12,6 +12,9 @@ $ErrorActionPreference = 'Stop'
 $source = [IO.Path]::GetFullPath($SourcePath)
 $targetDirectory = Join-Path $env:ProgramData 'DomainManager\config'
 $target = Join-Path $targetDirectory 'runtime.json'
+$targetDirectoryExisted = Test-Path -LiteralPath $targetDirectory -PathType Container
+$previousTarget = if (Test-Path -LiteralPath $target -PathType Leaf) { [IO.File]::ReadAllBytes($target) } else { $null }
+$previousDirectoryAcl = if ($targetDirectoryExisted) { (Get-Acl -LiteralPath $targetDirectory).Sddl } else { $null }
 
 if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Nie znaleziono konfiguracji: $source" }
 $runtime = Get-Content -Raw -LiteralPath $source | ConvertFrom-Json -Depth 20
@@ -39,21 +42,41 @@ foreach ($version in $phpVersions) {
 }
 
 if (-not $PSCmdlet.ShouldProcess($target, 'Instalacja chronionej konfiguracji środowiska')) { return }
-New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
 $temporary = "$target.$([Guid]::NewGuid().ToString('N')).tmp"
-Copy-Item -LiteralPath $source -Destination $temporary
-Move-Item -LiteralPath $temporary -Destination $target -Force
+try {
+    New-Item -ItemType Directory -Path $targetDirectory -Force | Out-Null
+    Copy-Item -LiteralPath $source -Destination $temporary
+    Move-Item -LiteralPath $temporary -Destination $target -Force
 
-$acl = Get-Acl -LiteralPath $targetDirectory
-$acl.SetAccessRuleProtection($true, $false)
-foreach ($rule in @($acl.Access)) { [void] $acl.RemoveAccessRuleSpecific($rule) }
-$inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
-$propagation = [Security.AccessControl.PropagationFlags]::None
-$allow = [Security.AccessControl.AccessControlType]::Allow
-foreach ($sidValue in @('S-1-5-18', 'S-1-5-32-544')) {
-    $sid = [Security.Principal.SecurityIdentifier]::new($sidValue)
-    $rule = [Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', $inheritance, $propagation, $allow)
-    [void] $acl.AddAccessRule($rule)
+    $acl = Get-Acl -LiteralPath $targetDirectory
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($rule in @($acl.Access)) { [void] $acl.RemoveAccessRuleSpecific($rule) }
+    $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+    $propagation = [Security.AccessControl.PropagationFlags]::None
+    $allow = [Security.AccessControl.AccessControlType]::Allow
+    foreach ($sidValue in @('S-1-5-18', 'S-1-5-32-544')) {
+        $sid = [Security.Principal.SecurityIdentifier]::new($sidValue)
+        $rule = [Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', $inheritance, $propagation, $allow)
+        [void] $acl.AddAccessRule($rule)
+    }
+    Set-Acl -LiteralPath $targetDirectory -AclObject $acl
+    Write-Host "Chroniona konfiguracja została zainstalowana: $target" -ForegroundColor Green
 }
-Set-Acl -LiteralPath $targetDirectory -AclObject $acl
-Write-Host "Chroniona konfiguracja została zainstalowana: $target" -ForegroundColor Green
+catch {
+    if ($null -eq $previousTarget) {
+        Remove-Item -LiteralPath $target -Force -ErrorAction SilentlyContinue
+    } else {
+        [IO.File]::WriteAllBytes($target, $previousTarget)
+    }
+    if (-not $targetDirectoryExisted) {
+        Remove-Item -LiteralPath $targetDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    } elseif ($null -ne $previousDirectoryAcl) {
+        $acl = Get-Acl -LiteralPath $targetDirectory
+        $acl.SetSecurityDescriptorSddlForm($previousDirectoryAcl)
+        Set-Acl -LiteralPath $targetDirectory -AclObject $acl
+    }
+    throw
+}
+finally {
+    Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+}

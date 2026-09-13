@@ -81,7 +81,7 @@ final class RuntimeConfiguration
 
     private static function assertAbsoluteWindowsPath(mixed $path, string $field): void
     {
-        if (!is_string($path) || preg_match('~^[A-Za-z]:[\\/]~D', $path) !== 1 || str_contains($path, "\0")) {
+        if (!is_string($path) || preg_match('~^[A-Za-z]:[\\\\/]~D', $path) !== 1 || str_contains($path, "\0")) {
             throw new RuntimeException("$field musi być bezwzględną ścieżką Windows.");
         }
     }

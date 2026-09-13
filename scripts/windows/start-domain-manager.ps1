@@ -6,6 +6,7 @@ param()
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$startedServices = [Collections.Generic.List[string]]::new()
 
 $iis = Get-Service -Name W3SVC -ErrorAction SilentlyContinue
 if ($null -ne $iis -and $iis.Status -eq 'Running') {
@@ -22,15 +23,26 @@ if ($foreign) {
     throw 'Port 80 lub 443 jest zajęty przez: ' + ($owners -join ', ')
 }
 
-foreach ($serviceName in @('DomainManagerHelper', 'DomainManagerApache')) {
-    if ((Get-Service $serviceName -ErrorAction Stop).Status -ne 'Running') {
-        Start-Service $serviceName
-        (Get-Service $serviceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+try {
+    foreach ($serviceName in @('DomainManagerHelper', 'DomainManagerApache')) {
+        if ((Get-Service $serviceName -ErrorAction Stop).Status -ne 'Running') {
+            Start-Service $serviceName
+            (Get-Service $serviceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+            $startedServices.Add($serviceName)
+        }
     }
-}
 
-$response = Invoke-WebRequest -Uri 'http://domain-manager.localhost/' -UseBasicParsing -TimeoutSec 15
-if ($response.StatusCode -ne 200 -or $response.Content -notmatch '<title>Domain Manager</title>') {
-    throw 'Serwer odpowiada, ale nie zwrócił interfejsu Domain Managera.'
+    $response = Invoke-WebRequest -Uri 'http://domain-manager.localhost/' -UseBasicParsing -TimeoutSec 15
+    if ($response.StatusCode -ne 200 -or $response.Content -notmatch '<title>Domain Manager</title>') {
+        throw 'Serwer odpowiada, ale nie zwrócił interfejsu Domain Managera.'
+    }
+    Write-Host 'Domain Manager działa: http://domain-manager.localhost/' -ForegroundColor Green
 }
-Write-Host 'Domain Manager działa: http://domain-manager.localhost/' -ForegroundColor Green
+catch {
+    $servicesToStop = $startedServices.ToArray()
+    [array]::Reverse($servicesToStop)
+    foreach ($serviceName in $servicesToStop) {
+        Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+    }
+    throw
+}

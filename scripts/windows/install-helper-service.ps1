@@ -10,7 +10,10 @@ param(
     [string] $ApacheServiceName = 'DomainManagerApache',
 
     [ValidateNotNullOrEmpty()]
-    [string] $InstallDirectory = "$env:ProgramFiles\Domain Manager\Helper"
+    [string] $InstallDirectory = "$env:ProgramFiles\Domain Manager\Helper",
+
+    [ValidateScript({ Test-Path -LiteralPath $_ -PathType Leaf })]
+    [string] $RuntimeConfiguration = (Join-Path $PSScriptRoot '..\..\config\runtime.json')
 )
 
 Set-StrictMode -Version Latest
@@ -24,6 +27,11 @@ $executablePath = Join-Path $installPath 'domain-manager-helper.exe'
 $serviceBinaryPath = '"{0}" --service' -f $executablePath
 $serviceExisted = $null -ne (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue)
 $installDirectoryExisted = Test-Path -LiteralPath $installPath
+$runtimeConfigPath = Join-Path $env:ProgramData 'DomainManager\config\runtime.json'
+$runtimeConfigDirectory = Split-Path -Parent $runtimeConfigPath
+$runtimeConfigDirectoryExisted = Test-Path -LiteralPath $runtimeConfigDirectory -PathType Container
+$previousRuntimeConfig = if (Test-Path -LiteralPath $runtimeConfigPath -PathType Leaf) { [IO.File]::ReadAllBytes($runtimeConfigPath) } else { $null }
+$previousRuntimeConfigAcl = if ($runtimeConfigDirectoryExisted) { (Get-Acl -LiteralPath $runtimeConfigDirectory).Sddl } else { $null }
 
 if (-not (Test-Path -LiteralPath $projectPath -PathType Leaf)) {
     throw "Nie znaleziono projektu helpera: $projectPath"
@@ -55,10 +63,25 @@ function Invoke-Checked {
     }
 }
 
+function Restore-RuntimeConfiguration {
+    if ($null -eq $previousRuntimeConfig) {
+        Remove-Item -LiteralPath $runtimeConfigPath -Force -ErrorAction SilentlyContinue
+    } else {
+        [IO.File]::WriteAllBytes($runtimeConfigPath, $previousRuntimeConfig)
+    }
+    if (-not $runtimeConfigDirectoryExisted) {
+        Remove-Item -LiteralPath $runtimeConfigDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    } elseif ($null -ne $previousRuntimeConfigAcl) {
+        $acl = Get-Acl -LiteralPath $runtimeConfigDirectory
+        $acl.SetSecurityDescriptorSddlForm($previousRuntimeConfigAcl)
+        Set-Acl -LiteralPath $runtimeConfigDirectory -AclObject $acl
+    }
+}
+
 try {
-    & (Join-Path $PSScriptRoot 'install-runtime-configuration.ps1') -Confirm:$false
+    & (Join-Path $PSScriptRoot 'install-runtime-configuration.ps1') -SourcePath $RuntimeConfiguration -Confirm:$false
     New-Item -ItemType Directory -Path $stagingPath -Force | Out-Null
-    Invoke-Checked -FilePath 'dotnet' -Arguments @('publish', $projectPath, '-c', 'Release', '--no-restore', '-o', $stagingPath)
+    Invoke-Checked -FilePath 'dotnet' -Arguments @('publish', $projectPath, '-c', 'Release', '-o', $stagingPath)
     if (-not (Test-Path -LiteralPath (Join-Path $stagingPath 'domain-manager-helper.exe') -PathType Leaf)) {
         throw 'Publikacja nie utworzyła pliku wykonywalnego helpera.'
     }
@@ -119,6 +142,7 @@ catch {
     if (-not $serviceExisted -and -not $installDirectoryExisted -and (Test-Path -LiteralPath $installPath)) {
         Remove-Item -LiteralPath $installPath -Recurse -Force
     }
+    Restore-RuntimeConfiguration
     throw
 }
 finally {

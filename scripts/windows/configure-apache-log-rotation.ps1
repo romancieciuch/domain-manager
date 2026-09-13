@@ -33,13 +33,15 @@ try {
     [IO.File]::WriteAllText($baseConfig, $contents, [Text.UTF8Encoding]::new($false))
     & $httpdPath -t
     if ($LASTEXITCODE -ne 0) { throw 'Test konfiguracji Apache nie powiódł się.' }
-    & $httpdPath -k restart -n $serviceName
-    if ($LASTEXITCODE -ne 0) { throw 'Nie udało się przeładować Apache.' }
-    Start-Sleep -Seconds 2
-    if ((Get-Service $serviceName).Status -ne 'Running') { throw 'Apache zatrzymał się po zmianie konfiguracji logów.' }
-    $response = Invoke-WebRequest -Uri 'http://domain-manager.localhost/' -UseBasicParsing -TimeoutSec 15
-    if ($response.StatusCode -ne 200 -or $response.Content -notmatch '<title>Domain Manager</title>') {
-        throw 'Domain Manager nie odpowiedział poprawnie po restarcie.'
+    if ($serviceWasRunning) {
+        & $httpdPath -k restart -n $serviceName
+        if ($LASTEXITCODE -ne 0) { throw 'Nie udało się przeładować Apache.' }
+        Start-Sleep -Seconds 2
+        if ((Get-Service $serviceName).Status -ne 'Running') { throw 'Apache zatrzymał się po zmianie konfiguracji logów.' }
+        $response = Invoke-WebRequest -Uri 'http://domain-manager.localhost/' -UseBasicParsing -TimeoutSec 15
+        if ($response.StatusCode -ne 200 -or $response.Content -notmatch '<title>Domain Manager</title>') {
+            throw 'Domain Manager nie odpowiedział poprawnie po restarcie.'
+        }
     }
     Write-Host "Rotacja error_log działa: maksymalnie $MaximumFiles plików po ${MaximumFileSizeMb} MB." -ForegroundColor Green
 }

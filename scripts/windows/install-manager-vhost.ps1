@@ -21,11 +21,15 @@ $publicRoot = Join-Path $projectRoot 'public'
 $dataRoot = Join-Path $projectRoot 'data'
 $apacheRootPath = [IO.Path]::GetFullPath($ApacheRoot).TrimEnd('\')
 $httpdPath = Join-Path $apacheRootPath 'bin\httpd.exe'
+$apacheService = Get-Service -Name $ApacheServiceName -ErrorAction Stop
+$serviceWasRunning = $apacheService.Status -eq 'Running'
 $managedDirectory = Join-Path $apacheRootPath 'conf\domain-manager'
 $targetPath = Join-Path $managedDirectory 'domain-manager-self.conf'
 $mkcertPath = Join-Path $env:ProgramFiles 'Domain Manager\Tools\mkcert.exe'
 $caRoot = Join-Path $env:ProgramData 'DomainManager\mkcert'
+$certificateRoot = Join-Path $env:ProgramData 'DomainManager\certificates'
 $certificateDirectory = Join-Path $env:ProgramData 'DomainManager\certificates\domain-manager'
+$certificateRootAclSddl = (Get-Acl -LiteralPath $certificateRoot).Sddl
 $certificatePath = Join-Path $certificateDirectory 'certificate.pem'
 $privateKeyPath = Join-Path $certificateDirectory 'private-key.pem'
 $previousCertificate = if (Test-Path -LiteralPath $certificatePath -PathType Leaf) { [IO.File]::ReadAllBytes($certificatePath) } else { $null }
@@ -61,6 +65,18 @@ function Add-ServiceRule {
         [Security.AccessControl.AccessControlType]::Allow
     )
     $acl.AddAccessRule($rule)
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Add-ServiceFileReadRule {
+    param([Parameter(Mandatory)] [string] $Path)
+    $acl = Get-Acl -LiteralPath $Path
+    $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+        $serviceSid,
+        [Security.AccessControl.FileSystemRights]'Read, ReadAndExecute',
+        [Security.AccessControl.AccessControlType]::Allow
+    )
+    $acl.SetAccessRule($rule)
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
@@ -116,13 +132,21 @@ try {
     } finally {
         [Environment]::SetEnvironmentVariable('CAROOT', $previousCaroot, 'Process')
     }
+    Add-ServiceRule -Path $certificateRoot -Rights ReadAndExecute
     Add-ServiceRule -Path $certificateDirectory -Rights Read
+    Add-ServiceFileReadRule -Path $certificatePath
+    Add-ServiceFileReadRule -Path $privateKeyPath
     [IO.File]::WriteAllText($targetPath, $configuration, [Text.UTF8Encoding]::new($false))
 
     & $httpdPath -t
     if ($LASTEXITCODE -ne 0) { throw 'Test konfiguracji Apache nie powiódł się.' }
-    & $httpdPath -k restart -n $ApacheServiceName
-    if ($LASTEXITCODE -ne 0) { throw 'Nie udało się przeładować usługi Apache.' }
+    if ($serviceWasRunning) {
+        & $httpdPath -k restart -n $ApacheServiceName
+        if ($LASTEXITCODE -ne 0) { throw 'Nie udało się przeładować usługi Apache.' }
+    } else {
+        Start-Service -Name $ApacheServiceName
+        (Get-Service -Name $ApacheServiceName).WaitForStatus('Running', [TimeSpan]::FromSeconds(20))
+    }
 
     $response = Invoke-WebRequest -Uri 'https://domain-manager.localhost/' -UseBasicParsing -TimeoutSec 15
     if ($response.StatusCode -ne 200 -or $response.Content -notmatch '<title>Domain Manager</title>') {
@@ -131,7 +155,8 @@ try {
     Write-Host 'Domain Manager działa pod adresem https://domain-manager.localhost/' -ForegroundColor Green
 }
 catch {
-    Write-Warning 'Instalacja VirtualHosta nie powiodła się. Przywracam poprzedni stan.'
+    $installationError = $_
+    Write-Warning "Instalacja VirtualHosta nie powiodła się: $($installationError.Exception.Message) Przywracam poprzedni stan."
     if ($null -eq $previousConfig) {
         Remove-Item -LiteralPath $targetPath -Force -ErrorAction SilentlyContinue
     } else {
@@ -139,6 +164,7 @@ catch {
     }
     Restore-Acl -Path $projectRoot -Sddl $projectAclSddl
     Restore-Acl -Path $dataRoot -Sddl $dataAclSddl
+    Restore-Acl -Path $certificateRoot -Sddl $certificateRootAclSddl
     if ($null -eq $previousCertificate) { Remove-Item -LiteralPath $certificatePath -Force -ErrorAction SilentlyContinue } else { [IO.File]::WriteAllBytes($certificatePath, $previousCertificate) }
     if ($null -eq $previousPrivateKey) { Remove-Item -LiteralPath $privateKeyPath -Force -ErrorAction SilentlyContinue } else { [IO.File]::WriteAllBytes($privateKeyPath, $previousPrivateKey) }
     if (-not $certificateDirectoryExisted) {
@@ -146,6 +172,10 @@ catch {
     } elseif ($null -ne $certificateAclSddl) {
         Restore-Acl -Path $certificateDirectory -Sddl $certificateAclSddl
     }
-    & $httpdPath -k restart -n $ApacheServiceName | Out-Null
-    throw
+    if ($serviceWasRunning) {
+        & $httpdPath -k restart -n $ApacheServiceName | Out-Null
+    } else {
+        Stop-Service -Name $ApacheServiceName -Force -ErrorAction SilentlyContinue
+    }
+    throw $installationError
 }

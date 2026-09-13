@@ -15,8 +15,8 @@ $apacheService = Get-Service -Name $ApacheServiceName -ErrorAction Stop
 $helperService = Get-Service -Name DomainManagerHelper -ErrorAction Stop
 $httpdPath = Join-Path ([IO.Path]::GetFullPath($ApacheRoot)) 'bin\httpd.exe'
 $iisWasRunning = $null -ne $iisService -and $iisService.Status -eq 'Running'
-$iisStartMode = if ($null -ne $iisService) { (Get-CimInstance Win32_Service -Filter "Name='W3SVC'").StartMode } else { $null }
 $apacheWasRunning = $apacheService.Status -eq 'Running'
+$helperWasRunning = $helperService.Status -eq 'Running'
 
 if (-not (Test-Path -LiteralPath $httpdPath -PathType Leaf)) { throw "Nie znaleziono Apache: $httpdPath" }
 if (-not $PSCmdlet.ShouldProcess('IIS oraz usługi Domain Manager', 'Ustawienie Domain Managera jako domyślnego serwera po starcie Windows')) { return }
@@ -26,6 +26,25 @@ function Set-StartMode {
     & "$env:SystemRoot\System32\sc.exe" config $Name "start=" $Mode | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Nie można ustawić trybu startu usługi $Name." }
 }
+
+function Get-StartMode {
+    param([string] $Name)
+    $serviceKey = Get-ItemProperty -LiteralPath "Registry::HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Services\$Name"
+    $delayedProperty = $serviceKey.PSObject.Properties['DelayedAutostart']
+    $isDelayed = $null -ne $delayedProperty -and $delayedProperty.Value -eq 1
+    if ($serviceKey.Start -eq 2 -and $isDelayed) { return 'delayed-auto' }
+    $mode = switch ($serviceKey.Start) {
+        2 { 'auto' }
+        3 { 'demand' }
+        4 { 'disabled' }
+        default { throw "Nieobsługiwany tryb startu usługi ${Name}: $($serviceKey.Start)." }
+    }
+    return $mode
+}
+
+$iisStartMode = if ($null -ne $iisService) { Get-StartMode -Name W3SVC } else { $null }
+$apacheStartMode = Get-StartMode -Name $ApacheServiceName
+$helperStartMode = Get-StartMode -Name DomainManagerHelper
 
 try {
     if ($null -ne $iisService) {
@@ -60,13 +79,17 @@ try {
     Write-Host 'Usługa WWW IIS (W3SVC) została wyłączona; pozostałe składniki IIS nie zostały odinstalowane.'
 }
 catch {
-    Write-Warning 'Konfiguracja autostartu nie powiodła się. Przywracam poprzedni stan IIS.'
-    Stop-Service $ApacheServiceName -Force -ErrorAction SilentlyContinue
+    Write-Warning 'Konfiguracja autostartu nie powiodła się. Przywracam poprzedni stan usług.'
+    Stop-Service -Name $ApacheServiceName -Force -ErrorAction SilentlyContinue
+    Stop-Service -Name DomainManagerHelper -Force -ErrorAction SilentlyContinue
+
+    Set-StartMode -Name $ApacheServiceName -Mode $apacheStartMode
+    Set-StartMode -Name DomainManagerHelper -Mode $helperStartMode
     if ($null -ne $iisService) {
-        $restoreMode = switch ($iisStartMode) { 'Auto' { 'auto' } 'Disabled' { 'disabled' } default { 'demand' } }
-        Set-StartMode -Name W3SVC -Mode $restoreMode
+        Set-StartMode -Name W3SVC -Mode $iisStartMode
         if ($iisWasRunning) { Start-Service W3SVC -ErrorAction SilentlyContinue }
     }
     if ($apacheWasRunning) { Start-Service $ApacheServiceName -ErrorAction SilentlyContinue }
+    if ($helperWasRunning) { Start-Service DomainManagerHelper -ErrorAction SilentlyContinue }
     throw
 }

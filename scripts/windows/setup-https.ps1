@@ -24,10 +24,20 @@ $dataRoot = Join-Path $env:ProgramData 'DomainManager'
 $caRoot = Join-Path $dataRoot 'mkcert'
 $certificateRoot = Join-Path $dataRoot 'certificates'
 $httpdPath = Join-Path ([IO.Path]::GetFullPath($ApacheRoot)) 'bin\httpd.exe'
-$baseConfig = Join-Path ([IO.Path]::GetFullPath($ApacheRoot)) 'conf\domain-manager\00-domain-manager-base.conf'
+$apacheService = Get-Service -Name $ApacheServiceName -ErrorAction Stop
+$serviceWasRunning = $apacheService.Status -eq 'Running'
+$managedConfigRoot = Join-Path ([IO.Path]::GetFullPath($ApacheRoot)) 'conf\domain-manager'
+$baseConfig = Join-Path $managedConfigRoot '00-domain-manager-base.conf'
 $previousBaseConfig = if (Test-Path -LiteralPath $baseConfig -PathType Leaf) { [IO.File]::ReadAllBytes($baseConfig) } else { $null }
+$createdManagedConfigRoot = -not (Test-Path -LiteralPath $managedConfigRoot -PathType Container)
 $createdCaRoot = -not (Test-Path -LiteralPath $caRoot)
 $createdToolDirectory = -not (Test-Path -LiteralPath $toolDirectory)
+$createdCertificateRoot = -not (Test-Path -LiteralPath $certificateRoot)
+$previousMkcert = if (Test-Path -LiteralPath $mkcertTarget -PathType Leaf) { [IO.File]::ReadAllBytes($mkcertTarget) } else { $null }
+$previousToolAcl = if (-not $createdToolDirectory) { (Get-Acl -LiteralPath $toolDirectory).Sddl } else { $null }
+$previousCaAcl = if (-not $createdCaRoot) { (Get-Acl -LiteralPath $caRoot).Sddl } else { $null }
+$previousCertificateAcl = if (-not $createdCertificateRoot) { (Get-Acl -LiteralPath $certificateRoot).Sddl } else { $null }
+$newCaWasInstalled = $false
 
 $actualHash = (Get-FileHash -LiteralPath $MkcertSource -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualHash -ne $expectedMkcertSha256) {
@@ -53,8 +63,15 @@ function Set-PrivateDirectoryAcl {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
+function Restore-DirectoryAcl {
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [string] $Sddl)
+    $acl = Get-Acl -LiteralPath $Path
+    $acl.SetSecurityDescriptorSddlForm($Sddl)
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
 try {
-    New-Item -ItemType Directory -Path $toolDirectory, $caRoot, $certificateRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $toolDirectory, $caRoot, $certificateRoot, $managedConfigRoot -Force | Out-Null
     Copy-Item -LiteralPath $MkcertSource -Destination $mkcertTarget -Force
     Set-PrivateDirectoryAcl -Path $toolDirectory
 
@@ -63,6 +80,7 @@ try {
     try {
         & $mkcertTarget -install
         if ($LASTEXITCODE -ne 0) { throw "mkcert -install zakończył się kodem $LASTEXITCODE." }
+        if ($createdCaRoot) { $newCaWasInstalled = $true }
     } finally {
         [Environment]::SetEnvironmentVariable('CAROOT', $previousCaroot, 'Process')
     }
@@ -81,8 +99,10 @@ try {
 
     & $httpdPath -t
     if ($LASTEXITCODE -ne 0) { throw 'Test konfiguracji Apache nie powiódł się.' }
-    & $httpdPath -k restart -n $ApacheServiceName
-    if ($LASTEXITCODE -ne 0) { throw 'Nie udało się przeładować Apache.' }
+    if ($serviceWasRunning) {
+        & $httpdPath -k restart -n $ApacheServiceName
+        if ($LASTEXITCODE -ne 0) { throw 'Nie udało się przeładować Apache.' }
+    }
 
     Write-Host 'HTTPS Domain Managera jest przygotowany.' -ForegroundColor Green
     Write-Host "CA: $caRoot"
@@ -92,8 +112,37 @@ catch {
     Write-Warning 'Konfiguracja HTTPS nie powiodła się. Przywracam poprzedni stan.'
     if ($null -eq $previousBaseConfig) { Remove-Item -LiteralPath $baseConfig -Force -ErrorAction SilentlyContinue }
     else { [IO.File]::WriteAllBytes($baseConfig, $previousBaseConfig) }
-    & $httpdPath -k restart -n $ApacheServiceName | Out-Null
-    if ($createdCaRoot) { Remove-Item -LiteralPath $caRoot -Recurse -Force -ErrorAction SilentlyContinue }
-    if ($createdToolDirectory) { Remove-Item -LiteralPath $toolDirectory -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($createdManagedConfigRoot) {
+        Remove-Item -LiteralPath $managedConfigRoot -Force -ErrorAction SilentlyContinue
+    }
+    if ($newCaWasInstalled -and (Test-Path -LiteralPath $mkcertTarget -PathType Leaf)) {
+        $previousCaroot = [Environment]::GetEnvironmentVariable('CAROOT', 'Process')
+        [Environment]::SetEnvironmentVariable('CAROOT', $caRoot, 'Process')
+        try { & $mkcertTarget -uninstall | Out-Null }
+        finally { [Environment]::SetEnvironmentVariable('CAROOT', $previousCaroot, 'Process') }
+    }
+    if ($createdCertificateRoot) {
+        Remove-Item -LiteralPath $certificateRoot -Recurse -Force -ErrorAction SilentlyContinue
+    } elseif ($null -ne $previousCertificateAcl) {
+        Restore-DirectoryAcl -Path $certificateRoot -Sddl $previousCertificateAcl
+    }
+    if ($createdCaRoot) {
+        Remove-Item -LiteralPath $caRoot -Recurse -Force -ErrorAction SilentlyContinue
+    } elseif ($null -ne $previousCaAcl) {
+        Restore-DirectoryAcl -Path $caRoot -Sddl $previousCaAcl
+    }
+    if ($createdToolDirectory) {
+        Remove-Item -LiteralPath $toolDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+        if ($null -eq $previousMkcert) {
+            Remove-Item -LiteralPath $mkcertTarget -Force -ErrorAction SilentlyContinue
+        } else {
+            [IO.File]::WriteAllBytes($mkcertTarget, $previousMkcert)
+        }
+        if ($null -ne $previousToolAcl) { Restore-DirectoryAcl -Path $toolDirectory -Sddl $previousToolAcl }
+    }
+    if ($serviceWasRunning) {
+        & $httpdPath -k restart -n $ApacheServiceName | Out-Null
+    }
     throw
 }

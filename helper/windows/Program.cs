@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Diagnostics;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.IO.Pipes;
@@ -22,6 +23,9 @@ internal static partial class Program
 
     public static async Task<int> Main(string[] args)
     {
+        if (args.Length == 1 && args[0].Equals("--self-test-redaction", StringComparison.Ordinal))
+            return SecretRedactor.SelfTest() ? 0 : 1;
+
         if (args.Length == 1 && args[0].Equals("--service", StringComparison.Ordinal))
             return WindowsServiceHost.Run("DomainManagerHelper", RunPipeServerAsync);
 
@@ -289,14 +293,65 @@ internal static partial class Program
 
         ProcessResult test = Run(httpd, ["-t"], 15_000);
         IPEndPoint[] listeners = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
+        string managerCertificatePath = Path.Combine(CertificateRoot, "domain-manager", "certificate.pem");
+        bool certificateExists = File.Exists(managerCertificatePath);
+        bool certificateValid = false;
+        string? certificateExpiresAt = null;
+        string certificateDetail = "Brakuje certyfikatu domain-manager.localhost.";
+        if (certificateExists)
+        {
+            try
+            {
+                using X509Certificate2 certificate = X509CertificateLoader.LoadCertificateFromFile(managerCertificatePath);
+                DateTime now = DateTime.Now;
+                certificateValid = certificate.NotBefore <= now && certificate.NotAfter > now;
+                certificateExpiresAt = certificate.NotAfter.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+                certificateDetail = certificateValid
+                    ? $"Ważny do {certificate.NotAfter:dd.MM.yyyy HH:mm}."
+                    : $"Nieważny; okres ważności: {certificate.NotBefore:dd.MM.yyyy}–{certificate.NotAfter:dd.MM.yyyy}.";
+            }
+            catch (CryptographicException)
+            {
+                certificateDetail = "Plik certyfikatu istnieje, ale nie można go odczytać.";
+            }
+        }
+        string errorLog = ReadApacheErrorLog();
+        string[] errorLogLines = errorLog.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
+        int logErrorCount = errorLogLines.Count(line => Regex.IsMatch(line, @"\[[^\]]+:(?:emerg|alert|crit|error)\]", RegexOptions.IgnoreCase));
+        int logWarningCount = errorLogLines.Count(line => Regex.IsMatch(line, @"\[[^\]]+:warn\]", RegexOptions.IgnoreCase));
+        int logNoticeCount = errorLogLines.Count(line => Regex.IsMatch(line, @"\[[^\]]+:notice\]", RegexOptions.IgnoreCase));
+        int sessionStartIndex = Array.FindLastIndex(errorLogLines, line => line.Contains("AH00455", StringComparison.Ordinal));
+        string[] currentSessionLines = sessionStartIndex >= 0 ? errorLogLines[sessionStartIndex..] : errorLogLines;
+        int sessionErrorCount = currentSessionLines.Count(line => Regex.IsMatch(line, @"\[[^\]]+:(?:emerg|alert|crit|error)\]", RegexOptions.IgnoreCase));
+        int sessionWarningCount = currentSessionLines.Count(line => Regex.IsMatch(line, @"\[[^\]]+:warn\]", RegexOptions.IgnoreCase));
+        int sessionNoticeCount = currentSessionLines.Count(line => Regex.IsMatch(line, @"\[[^\]]+:notice\]", RegexOptions.IgnoreCase));
+        Match sessionStartMatch = sessionStartIndex >= 0
+            ? Regex.Match(errorLogLines[sessionStartIndex], @"^\[([^\]]+)\]")
+            : Match.Empty;
+        string? latestLogTimestamp = errorLogLines
+            .Select(line => Regex.Match(line, @"^\[([^\]]+)\]"))
+            .LastOrDefault(match => match.Success)?
+            .Groups[1].Value;
         return WriteSuccess(request.RequestId, new
         {
             service_running = IsApacheServiceRunning(),
             configuration_valid = test.ExitCode == 0,
-            configuration_test = test.Output,
+            configuration_test = SecretRedactor.Redact(test.Output),
             port_80_listening = listeners.Any(endpoint => endpoint.Port == 80),
             port_443_listening = listeners.Any(endpoint => endpoint.Port == 443),
-            error_log = ReadApacheErrorLog(),
+            certificate_exists = certificateExists,
+            certificate_valid = certificateValid,
+            certificate_expires_at = certificateExpiresAt,
+            certificate_detail = certificateDetail,
+            error_log = SecretRedactor.Redact(errorLog),
+            error_log_errors = logErrorCount,
+            error_log_warnings = logWarningCount,
+            error_log_notices = logNoticeCount,
+            error_log_session_errors = sessionErrorCount,
+            error_log_session_warnings = sessionWarningCount,
+            error_log_session_notices = sessionNoticeCount,
+            error_log_session_started_at = sessionStartMatch.Success ? sessionStartMatch.Groups[1].Value : null,
+            error_log_latest_at = latestLogTimestamp,
         });
     }
 
@@ -315,7 +370,7 @@ internal static partial class Program
             return WriteError(request.RequestId, "apache_reload_failed", "Nie udało się bezpiecznie przeładować Apache.", [reload.Output]);
 
         WriteAudit(request.RequestId, "apache.reload", 0, "completed", null);
-        return WriteSuccess(request.RequestId, new { configuration_test = test.Output, reload_output = reload.Output });
+        return WriteSuccess(request.RequestId, new { configuration_test = SecretRedactor.Redact(test.Output), reload_output = SecretRedactor.Redact(reload.Output) });
     }
 
     private static int ClearApacheErrorLog(HelperRequest request)
@@ -366,6 +421,7 @@ internal static partial class Program
         long offset = Math.Max(0, stream.Length - maximumBytes);
         stream.Seek(offset, SeekOrigin.Begin);
         using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, true);
+        if (offset > 0) reader.ReadLine();
         string text = reader.ReadToEnd();
         string[] lines = text.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
         return string.Join(Environment.NewLine, lines.TakeLast(60));
@@ -494,7 +550,7 @@ internal static partial class Program
             }
 
             WriteAudit(request.RequestId, "project.apply", project.ProjectId, "completed", null);
-            return WriteSuccess(request.RequestId, new { path = target, hash = Hash(next), apache_test = test.Output });
+            return WriteSuccess(request.RequestId, new { path = target, hash = Hash(next), apache_test = SecretRedactor.Redact(test.Output) });
         }
         catch (Exception error)
         {
@@ -563,7 +619,7 @@ internal static partial class Program
 
             if (File.Exists(statePath)) File.Delete(statePath);
             WriteAudit(request.RequestId, "project.delete", project.ProjectId, "completed", null);
-            return WriteSuccess(request.RequestId, new { removed = true, apache_test = test.Output });
+            return WriteSuccess(request.RequestId, new { removed = true, apache_test = SecretRedactor.Redact(test.Output) });
         }
         catch (Exception error)
         {
@@ -892,7 +948,7 @@ internal static partial class Program
     {
         string directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "DomainManager", "logs");
         Directory.CreateDirectory(directory);
-        string line = JsonSerializer.Serialize(new { timestamp = DateTimeOffset.UtcNow, request_id = requestId, action, project_id = projectId, status, error }, JsonOptions.Default);
+        string line = JsonSerializer.Serialize(new { timestamp = DateTimeOffset.UtcNow, request_id = requestId, action, project_id = projectId, status, error = SecretRedactor.Redact(error) }, JsonOptions.Default);
         File.AppendAllText(Path.Combine(directory, "helper-audit.jsonl"), line + Environment.NewLine);
     }
 
@@ -933,7 +989,17 @@ internal static partial class Program
     }
 
     private static string SerializeError(string? requestId, string code, string message, IEnumerable<string>? details = null) =>
-        JsonSerializer.Serialize(new { ok = false, request_id = requestId, error = new { code, message, details } }, JsonOptions.Default);
+        JsonSerializer.Serialize(new
+        {
+            ok = false,
+            request_id = requestId,
+            error = new
+            {
+                code,
+                message = SecretRedactor.Redact(message),
+                details = details?.Select(SecretRedactor.Redact),
+            },
+        }, JsonOptions.Default);
 
     [GeneratedRegex(@"^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex DomainRegex();

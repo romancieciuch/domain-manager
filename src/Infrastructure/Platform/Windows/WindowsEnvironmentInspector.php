@@ -116,15 +116,21 @@ final readonly class WindowsEnvironmentInspector implements EnvironmentInspector
             ];
         }
 
-        $isLocalSystem = preg_match('/SERVICE_START_NAME\s*:\s*LocalSystem/i', $result['output']) === 1;
+        preg_match('/SERVICE_START_NAME\s*:\s*([^\r\n]+)/i', $result['output'], $accountMatch);
+        $account = trim($accountMatch[1] ?? 'Nieznane konto');
+        $expectedAccount = 'NT SERVICE\\DomainManagerApache';
+        $isExpectedAccount = strcasecmp($account, $expectedAccount) === 0;
+        $isLocalSystem = strcasecmp($account, 'LocalSystem') === 0;
 
         return [
             'name' => 'Konto usługi Apache',
-            'state' => $isLocalSystem ? 'warning' : 'available',
+            'state' => $isExpectedAccount ? 'available' : 'warning',
             'version' => null,
-            'detail' => $isLocalSystem
-                ? 'LocalSystem — wymaga ograniczenia przed uruchamianiem projektów PHP.'
-                : 'Usługa nie działa jako LocalSystem.',
+            'detail' => match (true) {
+                $isExpectedAccount => $account . ' — dedykowane konto usługi.',
+                $isLocalSystem => 'LocalSystem — wymaga ograniczenia przed uruchamianiem projektów PHP.',
+                default => $account . ' — uruchom ponownie instalator, aby zweryfikować konto.',
+            },
         ];
     }
 

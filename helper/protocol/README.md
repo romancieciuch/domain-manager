@@ -18,7 +18,8 @@ docelowych. Każda akcja znajduje się na zamkniętej liście.
 - `helper.status` — wersja protokołu i stan procesu,
 - `apache.preview_project` — walidacja danych i bezpieczne wygenerowanie podglądu,
 - `apache.diagnostics` — stan usługi, test konfiguracji, porty 80/443 i maksymalnie
-  60 ostatnich wierszy zarządzanego `error_log`,
+  60 ostatnich wierszy zarządzanego `error_log`; hasła, tokeny, klucze API,
+  nagłówki autoryzacji i klucze prywatne są maskowane przed zwróceniem odpowiedzi,
 - `apache.reload` — test konfiguracji i kontrolowane przeładowanie usługi Apache;
   nie wykonuje restartu, jeśli `httpd -t` zgłosi błąd,
 - `apache.clear_error_log` — zeruje aktywny `error_log` i usuwa wyłącznie jego

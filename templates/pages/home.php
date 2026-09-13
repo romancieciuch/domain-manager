@@ -218,12 +218,25 @@
                         ['Konfiguracja', ($apacheDiagnostics['configuration_valid'] ?? false), (string) ($apacheDiagnostics['configuration_test'] ?? '')],
                         ['Port 80', ($apacheDiagnostics['port_80_listening'] ?? false), ($apacheDiagnostics['port_80_listening'] ?? false) ? 'Nasłuchuje' : 'Wolny'],
                         ['Port 443', ($apacheDiagnostics['port_443_listening'] ?? false), ($apacheDiagnostics['port_443_listening'] ?? false) ? 'Nasłuchuje' : 'Wolny'],
+                        ['Certyfikat HTTPS', ($apacheDiagnostics['certificate_valid'] ?? false), (string) ($apacheDiagnostics['certificate_detail'] ?? 'Brak danych o certyfikacie.')],
                     ] as [$label, $ok, $detail]): ?>
                         <article class="diagnostic-card"><span class="component-icon <?= $ok ? 'available' : 'missing' ?>"><?= $ok ? '✓' : '×' ?></span><div><strong><?= e($label) ?></strong><small><?= e($detail) ?></small></div></article>
                     <?php endforeach; ?>
                 </section>
                 <section class="log-panel">
-                    <div class="log-heading"><div><span class="eyebrow">Maksymalnie 60 wierszy</span><h2>Ostatnie błędy Apache</h2></div><a class="button button-secondary" href="/apache/">Odśwież</a></div>
+                    <div class="log-heading">
+                        <div><span class="eyebrow">Maksymalnie 60 wierszy</span><h2>Ostatnie zdarzenia Apache</h2></div>
+                        <div class="log-heading-actions">
+                            <div class="log-summary" aria-label="Podsumowanie poziomów dziennika">
+                                <span class="log-session-label" title="<?= e((string) ($apacheDiagnostics['error_log_session_started_at'] ?? 'Nie wykryto czasu startu')) ?>">Od ostatniego startu</span>
+                                <span class="log-count error"><?= (int) ($apacheDiagnostics['error_log_session_errors'] ?? 0) ?> błędów</span>
+                                <span class="log-count warning"><?= (int) ($apacheDiagnostics['error_log_session_warnings'] ?? 0) ?> ostrzeżeń</span>
+                                <span class="log-count notice"><?= (int) ($apacheDiagnostics['error_log_session_notices'] ?? 0) ?> informacji</span>
+                            </div>
+                            <a class="button button-secondary" href="/apache/">Odśwież</a>
+                        </div>
+                    </div>
+                    <p class="log-history-note">Surowy podgląd zawiera także starsze wpisy: <?= (int) ($apacheDiagnostics['error_log_errors'] ?? 0) ?> błędów, <?= (int) ($apacheDiagnostics['error_log_warnings'] ?? 0) ?> ostrzeżeń i <?= (int) ($apacheDiagnostics['error_log_notices'] ?? 0) ?> informacji.</p>
                     <?php if (($apacheDiagnostics['error_log'] ?? '') === ''): ?><p class="log-empty">Dziennik błędów jest pusty.</p><?php else: ?><pre><?= e((string) $apacheDiagnostics['error_log']) ?></pre><?php endif; ?>
                 </section>
             <?php endif; ?>
