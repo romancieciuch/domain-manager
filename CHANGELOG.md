@@ -1,5 +1,18 @@
 # Historia zmian
 
+## v0.7 — 2026-09-14
+
+### Windows
+
+- Zmieniono usługę Apache z opóźnionego autostartu na zwykły start automatyczny.
+- Dodano launcher do jednorazowego włączenia szybkiego startu w istniejącej instalacji.
+- Dodano ręczny launcher uruchamiający usługi i otwierający Domain Managera w przeglądarce.
+
+### Interfejs
+
+- Uproszczono ekran dodawania projektu przez ukrycie listy istniejących projektów.
+- Poprawiono odstępy liczników w panelu diagnostyki Apache.
+
 ## v0.6 — 2026-09-13
 
 ### Windows
