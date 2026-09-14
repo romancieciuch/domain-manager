@@ -61,6 +61,7 @@ pod adresem `http://127.0.0.1:8097`.
 
 ## Dokumentacja
 
+- [Instalacja na czystym Windowsie](docs/installation.md)
 - [Architektura MVP](docs/architecture.md)
 - [Bezpieczeństwo usługi Apache na Windows](docs/windows-service-security.md)
 - [Konfiguracja Apache i wersji PHP](docs/runtime-configuration.md)
@@ -112,8 +113,6 @@ Ustawienie Domain Managera jako domyślnego serwera po starcie Windows:
 ```
 
 Apache jest ustawiany jako zwykła usługa automatyczna, bez opóźnionego startu.
-W istniejącej instalacji można zastosować tę zmianę dwuklikiem pliku
-`enable-domain-manager-fast-start.cmd`.
 Jeśli środowisko trzeba uruchomić ręcznie, można dwukrotnie kliknąć
 `start-domain-manager.cmd`; launcher poprosi o UAC, uruchomi obie usługi,
 sprawdzi stronę i otworzy ją w domyślnej przeglądarce.
