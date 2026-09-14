@@ -162,7 +162,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .log-heading-actions, .log-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .log-heading-actions { justify-content: flex-end; }
 .log-session-label { color: #91a4c0; font-size: 11px; font-weight: 700; }
-.log-count { padding: 5px 8px; border: 1px solid #34445d; border-radius: 7px; color: #b8c5d8; font-size: 11px; font-weight: 800; }
+.log-count { margin: 0; padding: 5px 8px; border: 1px solid #34445d; border-radius: 7px; color: #b8c5d8; font-size: 11px; font-weight: 800; }
 .log-count.error { border-color: #713943; color: #ffabb6; background: #321d27; }
 .log-count.warning { border-color: #745d31; color: #f6d58a; background: #302719; }
 .log-count.notice { color: #b8c9e6; background: #19253a; }

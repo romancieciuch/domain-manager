@@ -27,14 +27,14 @@
 
     <main>
         <?php if ($page === 'projects'): ?>
-        <section class="hero">
-            <div>
-                <span class="eyebrow">Windows MVP</span>
-                <h1>Twoje lokalne projekty,<br>bez grzebania w konfiguracji.</h1>
-                <p>Jedno miejsce na domeny, wersje PHP, HTTPS i Apache.</p>
-            </div>
-            <div class="environment-pill"><span></span> Fundament gotowy</div>
-        </section>
+			<section class="hero">
+				<div>
+					<span class="eyebrow">Windows MVP</span>
+					<h1>Twoje lokalne projekty</h1>
+					<?php /* <p>Jedno miejsce na domeny, wersje PHP, HTTPS i Apache.</p> */ ?>
+				</div>
+				<?php /* <div class="environment-pill"><span></span> Fundament gotowy</div> */ ?>
+			</section>
         <?php endif; ?>
 
         <?php if ($flash !== null): ?>
@@ -96,6 +96,7 @@
         <?php endif; ?>
 
         <?php if ($page === 'projects'): ?>
+        <?php if ($requestPath !== '/projects/new'): ?>
         <section class="projects-section">
             <div class="section-heading">
                 <div><span class="eyebrow">Workspace</span><h2>Projekty <span><?= count($projects) ?></span></h2></div>
@@ -154,6 +155,7 @@
                 <div class="search-empty" id="search-empty" hidden><h3>Brak pasujących projektów</h3><p>Spróbuj wpisać nazwę, domenę, ścieżkę lub wersję PHP.</p></div>
             <?php endif; ?>
         </section>
+        <?php endif; ?>
         <?php elseif ($page === 'environment'): ?>
             <section class="environment-header">
                 <div><span class="eyebrow">Diagnostyka Windows</span><h1>Środowisko lokalne</h1><p>Rzeczywisty stan komponentów wykryty bez modyfikowania systemu.</p></div>
