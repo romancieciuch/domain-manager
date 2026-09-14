@@ -56,21 +56,103 @@ projectSearch?.addEventListener('input', () => {
     if (searchEmpty) searchEmpty.hidden = visibleCount !== 0;
 });
 
+const projectDeleteDialog = document.querySelector('#project-delete-dialog');
+const projectDeleteName = projectDeleteDialog?.querySelector('[data-delete-project-name]');
+const projectDeleteCancel = projectDeleteDialog?.querySelector('[data-delete-cancel]');
+let pendingDeleteForm = null;
+let deleteTrigger = null;
+
 document.querySelectorAll('.delete-form').forEach((form) => {
     form.addEventListener('submit', (event) => {
-        const projectName = form.dataset.projectName;
-        const confirmed = window.confirm(
-            `Usunąć projekt „${projectName}” z Domain Managera?\n\nUsuniemy jego domeny, VirtualHost i certyfikat. Katalog i pliki projektu pozostaną bez zmian.`
-        );
+        if (form.dataset.deleteConfirmed === 'true') {
+            delete form.dataset.deleteConfirmed;
+            return;
+        }
 
-        if (!confirmed) event.preventDefault();
+        if (!projectDeleteDialog?.showModal) {
+            const confirmed = window.confirm(`Usunąć projekt „${form.dataset.projectName}” z Domain Managera?`);
+            if (!confirmed) event.preventDefault();
+            return;
+        }
+
+        event.preventDefault();
+        pendingDeleteForm = form;
+        deleteTrigger = event.submitter ?? document.activeElement;
+        projectDeleteName.textContent = `„${form.dataset.projectName}”`;
+        projectDeleteDialog.showModal();
+        projectDeleteCancel.focus();
     });
 });
 
-document.querySelector('.clear-log-form')?.addEventListener('submit', (event) => {
-    if (!window.confirm('Wyczyścić bieżący dziennik błędów Apache i usunąć jego rotacje?\n\nTej operacji nie można cofnąć.')) {
-        event.preventDefault();
+projectDeleteDialog?.addEventListener('close', () => {
+    const form = pendingDeleteForm;
+    const trigger = deleteTrigger;
+    pendingDeleteForm = null;
+    deleteTrigger = null;
+
+    if (projectDeleteDialog.returnValue === 'confirm' && form) {
+        form.dataset.deleteConfirmed = 'true';
+        form.requestSubmit();
+        return;
     }
+
+    trigger?.focus();
+});
+
+projectDeleteDialog?.addEventListener('click', (event) => {
+    if (event.target !== projectDeleteDialog) return;
+
+    const bounds = projectDeleteDialog.getBoundingClientRect();
+    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+        && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+
+    if (!inside) projectDeleteDialog.close('cancel');
+});
+
+const clearLogForm = document.querySelector('.clear-log-form');
+const logClearDialog = document.querySelector('#log-clear-dialog');
+const logClearCancel = logClearDialog?.querySelector('[data-log-clear-cancel]');
+let logClearTrigger = null;
+
+clearLogForm?.addEventListener('submit', (event) => {
+    if (clearLogForm.dataset.clearConfirmed === 'true') {
+        delete clearLogForm.dataset.clearConfirmed;
+        return;
+    }
+
+    if (!logClearDialog?.showModal) {
+        const confirmed = window.confirm('Wyczyścić bieżący dziennik błędów Apache i usunąć jego rotacje?\n\nTej operacji nie można cofnąć.');
+        if (!confirmed) event.preventDefault();
+        return;
+    }
+
+    event.preventDefault();
+    logClearTrigger = event.submitter ?? document.activeElement;
+    logClearDialog.showModal();
+    logClearCancel.focus();
+});
+
+logClearDialog?.addEventListener('close', () => {
+    const trigger = logClearTrigger;
+    logClearTrigger = null;
+
+    if (logClearDialog.returnValue === 'confirm' && clearLogForm) {
+        clearLogForm.dataset.clearConfirmed = 'true';
+        clearLogForm.requestSubmit();
+        return;
+    }
+
+    trigger?.focus();
+});
+
+logClearDialog?.addEventListener('click', (event) => {
+    if (event.target !== logClearDialog) return;
+
+    const bounds = logClearDialog.getBoundingClientRect();
+    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+        && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+
+    if (!inside) logClearDialog.close('cancel');
 });
 
 document.querySelector('#copy-config')?.addEventListener('click', async (event) => {

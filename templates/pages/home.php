@@ -272,6 +272,52 @@
             </section>
         <?php endif; ?>
     </main>
+
+    <dialog class="confirm-dialog" id="project-delete-dialog" aria-labelledby="project-delete-title" aria-describedby="project-delete-description">
+        <form method="dialog" class="confirm-dialog-card">
+            <div class="confirm-dialog-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M8 6V4h8v2"></path>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v5M14 11v5"></path>
+                </svg>
+            </div>
+            <div class="confirm-dialog-copy">
+                <span class="eyebrow">Usuwanie projektu</span>
+                <h2 id="project-delete-title">Usunąć projekt?</h2>
+                <p id="project-delete-description">Projekt <strong data-delete-project-name></strong> oraz jego domeny, VirtualHost i certyfikat zostaną usunięte z Domain Managera.</p>
+                <p class="confirm-dialog-note"><strong>Twoje pliki są bezpieczne.</strong> Katalog projektu i jego zawartość pozostaną bez zmian.</p>
+            </div>
+            <div class="confirm-dialog-actions">
+                <button class="button button-secondary" type="submit" value="cancel" data-delete-cancel>Anuluj</button>
+                <button class="button button-danger confirm-dialog-submit" type="submit" value="confirm">Usuń projekt</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="confirm-dialog" id="log-clear-dialog" aria-labelledby="log-clear-title" aria-describedby="log-clear-description">
+        <form method="dialog" class="confirm-dialog-card">
+            <div class="confirm-dialog-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M8 6V4h8v2"></path>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v5M14 11v5"></path>
+                </svg>
+            </div>
+            <div class="confirm-dialog-copy">
+                <span class="eyebrow">Diagnostyka Apache</span>
+                <h2 id="log-clear-title">Wyczyścić logi?</h2>
+                <p id="log-clear-description">Bieżący dziennik błędów Apache zostanie wyczyszczony razem ze wszystkimi jego rotacjami.</p>
+                <p class="confirm-dialog-note confirm-dialog-warning"><strong>Tej operacji nie można cofnąć.</strong> Utracisz dotychczasową historię błędów, ostrzeżeń i informacji.</p>
+            </div>
+            <div class="confirm-dialog-actions">
+                <button class="button button-secondary" type="submit" value="cancel" data-log-clear-cancel>Anuluj</button>
+                <button class="button button-danger confirm-dialog-submit" type="submit" value="confirm">Wyczyść logi</button>
+            </div>
+        </form>
+    </dialog>
 </div>
 </body>
 </html>
