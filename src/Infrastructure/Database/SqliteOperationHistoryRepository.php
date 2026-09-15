@@ -50,6 +50,11 @@ final readonly class SqliteOperationHistoryRepository
         return $statement->fetchAll();
     }
 
+    public function clear(): void
+    {
+        $this->database->exec('DELETE FROM operation_history');
+    }
+
     private function finish(string $id, string $status, ?string $code, ?string $message): void
     {
         $statement = $this->database->prepare(

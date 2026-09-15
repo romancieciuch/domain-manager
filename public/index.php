@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use DomainManager\Application\Project\ProjectInput;
+use DomainManager\Application\Diagnostics\ApacheLogFormatter;
 use DomainManager\Infrastructure\Database\MigrationRunner;
 use DomainManager\Infrastructure\Database\SqliteConnection;
 use DomainManager\Infrastructure\Database\SqliteProjectRepository;
@@ -94,6 +95,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!hash_equals($_SESSION['csrf_token'], (string) ($_POST['csrf_token'] ?? ''))) {
         $errors[] = 'Sesja formularza wygasła. Odśwież stronę i spróbuj ponownie.';
+    } elseif ($action === 'operation_history_clear') {
+        $operationHistory->clear();
+        $_SESSION['flash'] = 'Historia operacji została wyczyszczona.';
+        header('Location: /operations/');
+        exit;
     } elseif ($action === 'apply_apache') {
         $projectId = filter_var($_POST['project_id'] ?? null, FILTER_VALIDATE_INT);
         $project = $projectId === false ? null : $repository->find($projectId);
@@ -313,6 +319,7 @@ $environment = $page === 'environment'
     : null;
 $operations = $page === 'operations' ? $operationHistory->recent() : [];
 $apacheDiagnostics = null;
+$apacheLogEntries = [];
 if ($page === 'apache-diagnostics') {
     try {
         $pipeConfig = $config['helper']['windows'];
@@ -321,6 +328,7 @@ if ($page === 'apache-diagnostics') {
             $config['helper']['protocol_version'],
             min(10, $config['helper']['timeout_seconds']),
         ))->call('apache.diagnostics');
+        $apacheLogEntries = ApacheLogFormatter::entries((string) ($apacheDiagnostics['error_log'] ?? ''));
     } catch (Throwable $error) {
         $_SESSION['flash_error'] = $error->getMessage();
     }

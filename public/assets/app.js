@@ -155,6 +155,52 @@ logClearDialog?.addEventListener('click', (event) => {
     if (!inside) logClearDialog.close('cancel');
 });
 
+const clearHistoryForm = document.querySelector('.clear-history-form');
+const historyClearDialog = document.querySelector('#history-clear-dialog');
+const historyClearCancel = historyClearDialog?.querySelector('[data-history-clear-cancel]');
+let historyClearTrigger = null;
+
+clearHistoryForm?.addEventListener('submit', (event) => {
+    if (clearHistoryForm.dataset.clearConfirmed === 'true') {
+        delete clearHistoryForm.dataset.clearConfirmed;
+        return;
+    }
+
+    if (!historyClearDialog?.showModal) {
+        const confirmed = window.confirm('Wyczyścić całą historię operacji?\n\nTej operacji nie można cofnąć.');
+        if (!confirmed) event.preventDefault();
+        return;
+    }
+
+    event.preventDefault();
+    historyClearTrigger = event.submitter ?? document.activeElement;
+    historyClearDialog.showModal();
+    historyClearCancel.focus();
+});
+
+historyClearDialog?.addEventListener('close', () => {
+    const trigger = historyClearTrigger;
+    historyClearTrigger = null;
+
+    if (historyClearDialog.returnValue === 'confirm' && clearHistoryForm) {
+        clearHistoryForm.dataset.clearConfirmed = 'true';
+        clearHistoryForm.requestSubmit();
+        return;
+    }
+
+    trigger?.focus();
+});
+
+historyClearDialog?.addEventListener('click', (event) => {
+    if (event.target !== historyClearDialog) return;
+
+    const bounds = historyClearDialog.getBoundingClientRect();
+    const inside = event.clientX >= bounds.left && event.clientX <= bounds.right
+        && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+
+    if (!inside) historyClearDialog.close('cancel');
+});
+
 document.querySelector('#copy-config')?.addEventListener('click', async (event) => {
     const configuration = document.querySelector('#apache-config')?.textContent ?? '';
     await navigator.clipboard.writeText(configuration);

@@ -178,7 +178,16 @@
         <?php elseif ($page === 'operations'): ?>
             <section class="environment-header">
                 <div><span class="eyebrow">Dziennik zmian</span><h1>Historia operacji</h1><p>Ostatnie operacje wykonane przez Domain Managera i ich wynik.</p></div>
-                <a class="button button-secondary" href="/operations/">Odśwież</a>
+                <div class="diagnostic-actions">
+                    <?php if ($operations !== []): ?>
+                        <form method="post" class="clear-history-form">
+                            <input type="hidden" name="csrf_token" value="<?= e($_SESSION['csrf_token']) ?>">
+                            <input type="hidden" name="action" value="operation_history_clear">
+                            <button class="button button-danger" type="submit">Wyczyść historię</button>
+                        </form>
+                    <?php endif; ?>
+                    <a class="button button-secondary" href="/operations/">Odśwież</a>
+                </div>
             </section>
             <?php if ($operations === []): ?>
                 <section class="empty-state"><div class="empty-icon">↺</div><h3>Brak zapisanych operacji</h3><p>Historia pojawi się po synchronizacji, dodaniu, edycji lub usunięciu projektu.</p></section>
@@ -239,7 +248,15 @@
                         </div>
                     </div>
                     <p class="log-history-note">Surowy podgląd zawiera także starsze wpisy: <?= (int) ($apacheDiagnostics['error_log_errors'] ?? 0) ?> błędów, <?= (int) ($apacheDiagnostics['error_log_warnings'] ?? 0) ?> ostrzeżeń i <?= (int) ($apacheDiagnostics['error_log_notices'] ?? 0) ?> informacji.</p>
-                    <?php if (($apacheDiagnostics['error_log'] ?? '') === ''): ?><p class="log-empty">Dziennik błędów jest pusty.</p><?php else: ?><pre><?= e((string) $apacheDiagnostics['error_log']) ?></pre><?php endif; ?>
+                    <?php if ($apacheLogEntries === []): ?>
+                        <p class="log-empty">Dziennik błędów jest pusty.</p>
+                    <?php else: ?>
+                        <div class="log-entries">
+                            <?php foreach ($apacheLogEntries as $entry): ?>
+                                <pre class="log-entry <?= e($entry['level']) ?>"><?= e($entry['content']) ?></pre>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php endif; ?>
                 </section>
             <?php endif; ?>
         <?php elseif ($page === 'apache'): ?>
@@ -315,6 +332,29 @@
             <div class="confirm-dialog-actions">
                 <button class="button button-secondary" type="submit" value="cancel" data-log-clear-cancel>Anuluj</button>
                 <button class="button button-danger confirm-dialog-submit" type="submit" value="confirm">Wyczyść logi</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog class="confirm-dialog" id="history-clear-dialog" aria-labelledby="history-clear-title" aria-describedby="history-clear-description">
+        <form method="dialog" class="confirm-dialog-card">
+            <div class="confirm-dialog-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 6h18"></path>
+                    <path d="M8 6V4h8v2"></path>
+                    <path d="M19 6l-1 14H6L5 6"></path>
+                    <path d="M10 11v5M14 11v5"></path>
+                </svg>
+            </div>
+            <div class="confirm-dialog-copy">
+                <span class="eyebrow">Historia operacji</span>
+                <h2 id="history-clear-title">Wyczyścić historię?</h2>
+                <p id="history-clear-description">Wszystkie zapisane informacje o wykonanych operacjach i ich wynikach zostaną usunięte.</p>
+                <p class="confirm-dialog-note confirm-dialog-warning"><strong>Tej operacji nie można cofnąć.</strong> Projekty i ich konfiguracje pozostaną bez zmian.</p>
+            </div>
+            <div class="confirm-dialog-actions">
+                <button class="button button-secondary" type="submit" value="cancel" data-history-clear-cancel>Anuluj</button>
+                <button class="button button-danger confirm-dialog-submit" type="submit" value="confirm">Wyczyść historię</button>
             </div>
         </form>
     </dialog>

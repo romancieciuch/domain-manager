@@ -8,6 +8,7 @@ use DomainManager\Domain\Project;
 use DomainManager\Infrastructure\Database\MigrationRunner;
 use DomainManager\Infrastructure\Database\SqliteConnection;
 use DomainManager\Infrastructure\Database\SqliteOperationHistoryRepository;
+use DomainManager\Application\Diagnostics\ApacheLogFormatter;
 use DomainManager\Infrastructure\Database\SqliteProjectRepository;
 use DomainManager\Infrastructure\Configuration\RuntimeConfiguration;
 use DomainManager\Infrastructure\Platform\Windows\WindowsApacheManager;
@@ -67,6 +68,36 @@ function assertThrows(string $exception, callable $callback): void
     }
     throw new RuntimeException("Oczekiwany wyjątek $exception nie został rzucony.");
 }
+
+test('Formatter grupuje i oznacza wieloliniowe wpisy Apache', static function (): void {
+    $log = "fragment poprzedniego wpisu\n"
+        . "[Tue Sep 15 14:10:44.428027 2026] [fcgid:warn] pierwszy wiersz\n"
+        . "kontynuacja ostrzeżenia\n"
+        . "[Tue Sep 15 14:11:00.000000 2026] [core:error] awaria\n"
+        . "[Tue Sep 15 14:12:00.000000 2026] [mpm_winnt:notice] start";
+    $entries = ApacheLogFormatter::entries($log);
+
+    assertSameValue(4, count($entries));
+    assertSameValue('unknown', $entries[0]['level']);
+    assertSameValue('warning', $entries[1]['level']);
+    assertTrue(str_contains($entries[1]['content'], "pierwszy wiersz\nkontynuacja ostrzeżenia"));
+    assertSameValue('error', $entries[2]['level']);
+    assertSameValue('notice', $entries[3]['level']);
+});
+
+test('Formatter czytelnie łamie długi zrzut PHP z fcgid', static function (): void {
+    $dump = str_repeat('public $value = NULL; ', 14);
+    $log = '[Tue Sep 15 14:10:44.428027 2026] [fcgid:warn] [pid 1] mod_fcgid: stderr: '
+        . 'class Example { ' . $dump . "public \$path = 'C:\\\\test;still-path'; }";
+    $entry = ApacheLogFormatter::entries($log)[0];
+
+    assertTrue(
+        str_contains($entry['content'], "mod_fcgid: stderr:\nclass Example {\n  public \$value = NULL;\n"),
+        'Nieoczekiwany format: ' . str_replace("\n", '\\n', $entry['content']),
+    );
+    assertTrue(str_contains($entry['content'], "'C:\\\\test;still-path';\n"), 'Średnik w cudzysłowie nie może rozcinać wartości.');
+    assertTrue(str_ends_with($entry['content'], "\n}"));
+});
 
 test('Domena jest normalizowana do małych liter bez końcowej kropki', static function (): void {
     assertSameValue('local.example.test', (new DomainName(' LOCAL.Example.Test. '))->value);
@@ -188,6 +219,11 @@ test('Historia zapisuje powodzenie i błąd operacji', static function () use ($
     assertSameValue('failed', $rows[0]['status']);
     assertSameValue('Kontrolowany błąd', $rows[0]['error_message']);
     assertSameValue('completed', $rows[1]['status']);
+});
+
+test('Historię operacji można wyczyścić', static function () use ($history): void {
+    $history->clear();
+    assertSameValue([], $history->recent());
 });
 
 test('Repozytorium zapisuje projekt i relacyjne aliasy', static function () use ($repository, $documentRoot): void {

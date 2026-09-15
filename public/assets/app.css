@@ -187,7 +187,13 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px r
 .log-count.warning { border-color: #745d31; color: #f6d58a; background: #302719; }
 .log-count.notice { color: #b8c9e6; background: #19253a; }
 .log-history-note { margin: 0; padding: 9px 18px; border-bottom: 1px solid #26344a; color: #8fa1ba; background: #131d2d; font-size: 11px; }
-.log-panel pre { max-height: 480px; margin: 0; padding: 18px; overflow: auto; color: #d8e6fb; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.log-entries { max-height: 480px; padding: 10px; overflow: auto; }
+.log-entry { margin: 0 0 8px; padding: 12px 14px; border: 1px solid #293950; border-left: 3px solid #536782; border-radius: 9px; color: #d8e6fb; background: #131d2d; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.log-entry:last-child { margin-bottom: 0; }
+.log-entry.error { border-color: #713943; border-left-color: #ff7185; color: #ffd3d9; background: #251923; }
+.log-entry.warning { border-color: #745d31; border-left-color: #f3c867; color: #f9e6b8; background: #241f18; }
+.log-entry.notice { border-color: #385879; border-left-color: #76b7f4; color: #cfe6fa; background: #152131; }
+.log-entry.debug { border-left-color: #8393aa; color: #acbbcf; }
 .log-empty { margin: 0; padding: 28px 18px; color: #9fb0c9; }
 
 @media (max-width: 760px) {
