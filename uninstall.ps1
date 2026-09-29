@@ -121,6 +121,20 @@ if ((Test-Path -LiteralPath $mkcertPath -PathType Leaf) -and (Test-Path -Literal
 }
 
 Write-Step 'Usuwam komponenty Domain Managera'
+if ($null -ne $installationState -and $null -ne $installationState.PSObject.Properties['php_ini_files']) {
+    foreach ($entry in @($installationState.php_ini_files)) {
+        if ($null -ne $entry.base64) { [IO.File]::WriteAllBytes([string]$entry.path, [Convert]::FromBase64String([string]$entry.base64)) }
+    }
+    if ($null -ne $installationState.PSObject.Properties['php_session_directory']) {
+        $sessionPath = [IO.Path]::GetFullPath([string]$installationState.php_session_directory.path).TrimEnd('\')
+        if ($sessionPath -ne 'C:\temp\php-sessions') { throw "Nieoczekiwany katalog sesji w migawce: $sessionPath" }
+        if ([bool]$installationState.php_session_directory.existed) {
+            $acl = Get-Acl -LiteralPath $sessionPath; $acl.SetSecurityDescriptorSddlForm([string]$installationState.php_session_directory.sddl); Set-Acl -LiteralPath $sessionPath -AclObject $acl
+        } elseif (Test-Path -LiteralPath $sessionPath -PathType Container) {
+            Remove-Item -LiteralPath $sessionPath -Recurse -Force
+        }
+    }
+}
 if (Test-Path -LiteralPath $projectStateRoot -PathType Container) {
     foreach ($projectStatePath in @(Get-ChildItem -LiteralPath $projectStateRoot -Filter 'project-*.json' -File)) {
         $projectState = Get-Content -Raw -LiteralPath $projectStatePath.FullName | ConvertFrom-Json

@@ -36,6 +36,12 @@ function Get-ServiceState([string] $Name) {
 
 $apacheRootPath = [IO.Path]::GetFullPath($ApacheRoot).TrimEnd('\')
 $httpdConfig = Join-Path $apacheRootPath 'conf\httpd.conf'
+$phpIniFiles = @($PhpRoots | ForEach-Object {
+    $path = Join-Path ([IO.Path]::GetFullPath($_).TrimEnd('\')) 'php.ini'
+    [pscustomobject]@{ path = $path; base64 = if (Test-Path -LiteralPath $path -PathType Leaf) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($path)) } else { $null } }
+})
+$sessionDirectory = 'C:\temp\php-sessions'
+$sessionDirectoryExisted = Test-Path -LiteralPath $sessionDirectory -PathType Container
 $aclPaths = @($apacheRootPath, (Join-Path $apacheRootPath 'logs')) + @($PhpRoots | ForEach-Object { [IO.Path]::GetFullPath($_).TrimEnd('\') })
 $acls = foreach ($path in $aclPaths | Sort-Object -Unique) {
     if (Test-Path -LiteralPath $path -PathType Container) {
@@ -51,6 +57,8 @@ $state = [pscustomobject]@{
     httpd_config_path = $httpdConfig
     httpd_config_base64 = if (Test-Path -LiteralPath $httpdConfig -PathType Leaf) { [Convert]::ToBase64String([IO.File]::ReadAllBytes($httpdConfig)) } else { $null }
     runtime_acls = @($acls)
+    php_ini_files = @($phpIniFiles)
+    php_session_directory = [pscustomobject]@{ path = $sessionDirectory; existed = $sessionDirectoryExisted; sddl = if ($sessionDirectoryExisted) { (Get-Acl -LiteralPath $sessionDirectory).Sddl } else { $null } }
 }
 
 New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null

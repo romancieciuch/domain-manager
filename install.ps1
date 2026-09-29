@@ -58,17 +58,6 @@ foreach ($root in @($runtime.projects.allowed_roots)) {
 }
 if ($problems.Count -gt 0) { Stop-WithGuidance $problems }
 
-Write-Step 'Sprawdzam rozszerzenia PHP'
-foreach ($entry in $phpEntries) {
-    $cli = [IO.Path]::GetFullPath([string] $entry.Value.cli)
-    $modules = @(& $cli -m 2>$null)
-    foreach ($module in @('PDO', 'pdo_sqlite', 'sqlite3')) {
-        if ($modules -notcontains $module) {
-            $problems.Add("PHP $($entry.Name): w php.ini włącz rozszerzenie $module (usuń średnik przed extension=$module).")
-        }
-    }
-}
-
 Write-Step 'Sprawdzam moduły Apache'
 $preflightManagedDirectory = Join-Path $apacheRoot 'conf\domain-manager'
 $createdPreflightManagedDirectory = -not (Test-Path -LiteralPath $preflightManagedDirectory -PathType Container)
@@ -90,11 +79,21 @@ if ($moduleExitCode -ne 0) {
     }
 }
 if ($problems.Count -gt 0) { Stop-WithGuidance $problems }
-Write-Host 'Wymagania PHP i Apache są spełnione.' -ForegroundColor Green
 
 $phpRoots = @($phpEntries | ForEach-Object { [IO.Path]::GetFullPath([string] $_.Value.root) })
 Write-Step 'Zapisuję stan Windows sprzed instalacji'
 & "$PSScriptRoot\scripts\windows\save-installation-state.ps1" -ApacheRoot $apacheRoot -ApacheServiceName $apacheService -PhpRoots $phpRoots
+
+Write-Step 'Włączam podstawowe rozszerzenia PHP'
+& "$PSScriptRoot\scripts\windows\configure-php-extensions.ps1" -PhpRoots $phpRoots -Confirm:$false
+foreach ($entry in $phpEntries) {
+    $cli = [IO.Path]::GetFullPath([string] $entry.Value.cli)
+    $modules = @(& $cli -m 2>$null)
+    foreach ($module in @('PDO', 'curl', 'fileinfo', 'gd', 'mbstring', 'mysqli', 'openssl', 'pdo_mysql', 'pdo_pgsql', 'pdo_sqlite', 'pgsql', 'soap', 'sockets', 'sqlite3', 'zip')) {
+        if ($modules -notcontains $module) { throw "PHP $($entry.Name): rozszerzenie $module nie zostało poprawnie załadowane." }
+    }
+}
+Write-Host 'Wymagania PHP i Apache są spełnione.' -ForegroundColor Green
 
 # httpd.exe validates IncludeOptional during service installation and requires the
 # wildcard's parent directory to exist even when it does not contain any files yet.
@@ -132,6 +131,7 @@ $defaultPhpCgi = [IO.Path]::GetFullPath([string] $defaultEntry.Value.cgi)
 Write-Step 'Zabezpieczam usługę i katalogi runtime'
 & "$PSScriptRoot\scripts\windows\secure-apache-service.ps1" -ServiceName $apacheService -ApacheRoot $apacheRoot -PhpRoots $phpRoots -Confirm:$false
 & "$PSScriptRoot\scripts\windows\harden-runtime-acls.ps1" -ServiceName $apacheService -ApacheRoot $apacheRoot -PhpRoots $phpRoots -Confirm:$false
+& "$PSScriptRoot\scripts\windows\configure-php-sessions.ps1" -PhpRoots $phpRoots -ApacheServiceName $apacheService -Confirm:$false
 
 $caKey = Join-Path $env:ProgramData 'DomainManager\mkcert\rootCA-key.pem'
 $installedMkcert = Join-Path $env:ProgramFiles 'Domain Manager\Tools\mkcert.exe'

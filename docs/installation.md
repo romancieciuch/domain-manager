@@ -47,21 +47,14 @@ C:\php\8.5.10\php.exe
 C:\php\8.5.10\php-cgi.exe
 ```
 
-W pliku `C:\php\8.5.10\php.ini` włącz rozszerzenia SQLite, usuwając poprzedzający
-je średnik, jeżeli jest obecny:
+Instalator automatycznie włączy rozszerzenia `curl`, `fileinfo`, `gd`,
+`mbstring`, `mysqli`, `openssl`, `pdo_mysql`, `pdo_pgsql`, `pdo_sqlite`, `pgsql`,
+`soap`, `sockets`, `sqlite3` i `zip`. Wymagane biblioteki DLL muszą znajdować się
+w katalogu `ext` danej dystrybucji PHP.
 
-```ini
-extension=pdo_sqlite
-extension=sqlite3
-```
-
-Sprawdź rozszerzenia poleceniem:
-
-```powershell
-C:\php\8.5.10\php.exe -m
-```
-
-Na liście muszą znajdować się `PDO`, `pdo_sqlite` i `sqlite3`.
+Instalator ustawi również `session.save_path` na `C:/temp/php-sessions`, utworzy
+ten katalog i ograniczy prawo zapisu do usługi Apache, administratorów oraz
+SYSTEM. Nie trzeba konfigurować katalogu sesji ręcznie.
 
 W pliku `C:\apache\2.4.68\conf\httpd.conf` włącz następujące moduły:
 

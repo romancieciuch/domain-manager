@@ -41,6 +41,7 @@ main { width: min(1180px, calc(100% - 48px)); margin: 0 auto; padding: 54px 0 80
 .panel { background: white; border: 1px solid var(--line); border-radius: 20px; box-shadow: 0 18px 55px rgba(40,65,57,.08); }
 .form-panel { padding: 28px; margin-bottom: 42px; }
 .panel-heading, .section-heading { display: flex; justify-content: space-between; align-items: start; }
+.panel-heading { margin-bottom: 24px; }
 .panel-heading h2, .section-heading h2 { margin: 5px 0 0; font-size: 27px; letter-spacing: -.025em; }
 .section-heading h2 span { color: var(--muted); font-weight: 500; }
 .close-button { color: var(--muted); font-size: 29px; text-decoration: none; line-height: 1; }
