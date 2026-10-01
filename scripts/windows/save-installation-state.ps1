@@ -42,6 +42,8 @@ $phpIniFiles = @($PhpRoots | ForEach-Object {
 })
 $sessionDirectory = 'C:\temp\php-sessions'
 $sessionDirectoryExisted = Test-Path -LiteralPath $sessionDirectory -PathType Container
+$uploadTempDirectory = 'C:\php\tmp'
+$uploadTempDirectoryExisted = Test-Path -LiteralPath $uploadTempDirectory -PathType Container
 $aclPaths = @($apacheRootPath, (Join-Path $apacheRootPath 'logs')) + @($PhpRoots | ForEach-Object { [IO.Path]::GetFullPath($_).TrimEnd('\') })
 $acls = foreach ($path in $aclPaths | Sort-Object -Unique) {
     if (Test-Path -LiteralPath $path -PathType Container) {
@@ -59,6 +61,7 @@ $state = [pscustomobject]@{
     runtime_acls = @($acls)
     php_ini_files = @($phpIniFiles)
     php_session_directory = [pscustomobject]@{ path = $sessionDirectory; existed = $sessionDirectoryExisted; sddl = if ($sessionDirectoryExisted) { (Get-Acl -LiteralPath $sessionDirectory).Sddl } else { $null } }
+    php_upload_tmp_directory = [pscustomobject]@{ path = $uploadTempDirectory; existed = $uploadTempDirectoryExisted; sddl = if ($uploadTempDirectoryExisted) { (Get-Acl -LiteralPath $uploadTempDirectory).Sddl } else { $null } }
 }
 
 New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null

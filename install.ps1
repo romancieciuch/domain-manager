@@ -131,7 +131,9 @@ $defaultPhpCgi = [IO.Path]::GetFullPath([string] $defaultEntry.Value.cgi)
 Write-Step 'Zabezpieczam usługę i katalogi runtime'
 & "$PSScriptRoot\scripts\windows\secure-apache-service.ps1" -ServiceName $apacheService -ApacheRoot $apacheRoot -PhpRoots $phpRoots -Confirm:$false
 & "$PSScriptRoot\scripts\windows\harden-runtime-acls.ps1" -ServiceName $apacheService -ApacheRoot $apacheRoot -PhpRoots $phpRoots -Confirm:$false
+& "$PSScriptRoot\scripts\windows\configure-apache-ssl-session-cache.ps1" -ApacheRoot $apacheRoot -ServiceName $apacheService -Confirm:$false
 & "$PSScriptRoot\scripts\windows\configure-php-sessions.ps1" -PhpRoots $phpRoots -ApacheServiceName $apacheService -Confirm:$false
+& "$PSScriptRoot\scripts\windows\configure-php-upload-temp.ps1" -PhpRoots $phpRoots -ApacheServiceName $apacheService -Confirm:$false
 
 $caKey = Join-Path $env:ProgramData 'DomainManager\mkcert\rootCA-key.pem'
 $installedMkcert = Join-Path $env:ProgramFiles 'Domain Manager\Tools\mkcert.exe'

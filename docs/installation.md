@@ -56,6 +56,10 @@ Instalator ustawi również `session.save_path` na `C:/temp/php-sessions`, utwor
 ten katalog i ograniczy prawo zapisu do usługi Apache, administratorów oraz
 SYSTEM. Nie trzeba konfigurować katalogu sesji ręcznie.
 
+Instalator ustawi także wspólny dla wszystkich wersji PHP katalog
+`upload_tmp_dir = "C:/php/tmp"`. Katalog zostanie utworzony automatycznie, a
+prawo zapisu otrzymają wyłącznie usługa Apache, administratorzy i SYSTEM.
+
 W pliku `C:\apache\2.4.68\conf\httpd.conf` włącz następujące moduły:
 
 ```apache
@@ -71,6 +75,8 @@ C:\apache\2.4.68\bin\httpd.exe -M
 ```
 
 Na liście muszą znajdować się `rewrite_module`, `ssl_module` i `fcgid_module`.
+Moduł `socache_shmcb` oraz pamięć podręczna sesji TLS zostaną włączone
+automatycznie przez instalator.
 
 ## 3. Utwórz katalog projektów
 

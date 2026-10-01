@@ -134,6 +134,17 @@ if ($null -ne $installationState -and $null -ne $installationState.PSObject.Prop
             Remove-Item -LiteralPath $sessionPath -Recurse -Force
         }
     }
+    if ($null -ne $installationState.PSObject.Properties['php_upload_tmp_directory']) {
+        $uploadTempPath = [IO.Path]::GetFullPath([string]$installationState.php_upload_tmp_directory.path).TrimEnd('\')
+        if ($uploadTempPath -ne 'C:\php\tmp') { throw "Nieoczekiwany katalog upload_tmp_dir w migawce: $uploadTempPath" }
+        if ([bool]$installationState.php_upload_tmp_directory.existed) {
+            $acl = Get-Acl -LiteralPath $uploadTempPath
+            $acl.SetSecurityDescriptorSddlForm([string]$installationState.php_upload_tmp_directory.sddl)
+            Set-Acl -LiteralPath $uploadTempPath -AclObject $acl
+        } elseif (Test-Path -LiteralPath $uploadTempPath -PathType Container) {
+            Remove-Item -LiteralPath $uploadTempPath -Recurse -Force
+        }
+    }
 }
 if (Test-Path -LiteralPath $projectStateRoot -PathType Container) {
     foreach ($projectStatePath in @(Get-ChildItem -LiteralPath $projectStateRoot -Filter 'project-*.json' -File)) {
