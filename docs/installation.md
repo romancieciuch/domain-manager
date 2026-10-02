@@ -52,13 +52,9 @@ Instalator automatycznie włączy rozszerzenia `curl`, `fileinfo`, `gd`,
 `soap`, `sockets`, `sqlite3` i `zip`. Wymagane biblioteki DLL muszą znajdować się
 w katalogu `ext` danej dystrybucji PHP.
 
-Instalator ustawi również `session.save_path` na `C:/temp/php-sessions`, utworzy
-ten katalog i ograniczy prawo zapisu do usługi Apache, administratorów oraz
-SYSTEM. Nie trzeba konfigurować katalogu sesji ręcznie.
-
-Instalator ustawi także wspólny dla wszystkich wersji PHP katalog
-`upload_tmp_dir = "C:/php/tmp"`. Katalog zostanie utworzony automatycznie, a
-prawo zapisu otrzymają wyłącznie usługa Apache, administratorzy i SYSTEM.
+Instalator ustawi `session.save_path`, `upload_tmp_dir` i `sys_temp_dir` na wspólny
+katalog `C:/php/tmp`. Katalog zostanie utworzony automatycznie, a prawo zapisu
+otrzymają wyłącznie usługa Apache, administratorzy i SYSTEM.
 
 W pliku `C:\apache\2.4.68\conf\httpd.conf` włącz następujące moduły:
 
